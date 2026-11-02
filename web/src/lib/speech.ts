@@ -129,8 +129,10 @@ function utterWith(text: string, voice: SpeechSynthesisVoice | null, rate: numbe
     const u = new SpeechSynthesisUtterance(text);
     u.lang = 'tr-TR';
     if (voice) u.voice = voice;
-    u.rate = rate;
-    u.pitch = pitch;
+    // Doğal (Natural) olmayan eski seslerde (ör. Tolga) perde/hız nötr: yükseltilmiş perde yapay duyuluyor
+    const natural = !voice || /natural|online/i.test(voice.name);
+    u.rate = natural ? rate : 1.05;
+    u.pitch = natural ? pitch : 1;
     u.volume = 1;
     let started = false;
     let finished = false;
