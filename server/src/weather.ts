@@ -9,6 +9,8 @@ export type WeatherKind = 'clear' | 'partly' | 'clouds' | 'overcast' | 'fog' | '
 
 export interface Weather {
   place: string | null;
+  /** Konumun kaynağı: browser (otomatik) | manual (elle seçilen) | env | default */
+  locationSource: string;
   lat: number;
   lon: number;
   temp: number;
@@ -48,11 +50,11 @@ const TTL = 15 * 60_000;
 
 async function location() {
   const v = await getStore().getState('location').catch(() => null);
-  if (v) return JSON.parse(v) as { lat: number; lon: number; place: string | null };
+  if (v) return { source: 'browser', ...JSON.parse(v) } as { lat: number; lon: number; place: string | null; source: string };
   const lat = Number(process.env.GUNES_LAT);
   const lon = Number(process.env.GUNES_LON);
-  if (Number.isFinite(lat) && Number.isFinite(lon) && process.env.GUNES_LAT) return { lat, lon, place: null };
-  return { lat: 41.0082, lon: 28.9784, place: 'İstanbul' };
+  if (Number.isFinite(lat) && Number.isFinite(lon) && process.env.GUNES_LAT) return { lat, lon, place: null, source: 'env' };
+  return { lat: 41.0082, lon: 28.9784, place: 'İstanbul', source: 'default' };
 }
 
 async function placeName(lat: number, lon: number) {
@@ -68,12 +70,12 @@ async function placeName(lat: number, lon: number) {
   }
 }
 
-export async function setLocation(lat: number, lon: number) {
+export async function setLocation(lat: number, lon: number, manualPlace?: string, source: 'browser' | 'manual' = 'browser') {
   const prev = await location();
   // Konum ~1 km'den az değiştiyse adı yeniden sorma
   const moved = Math.abs(prev.lat - lat) > 0.01 || Math.abs(prev.lon - lon) > 0.01;
-  const place = moved || !prev.place ? await placeName(lat, lon) : prev.place;
-  await getStore().setState('location', JSON.stringify({ lat: +lat.toFixed(4), lon: +lon.toFixed(4), place }));
+  const place = manualPlace || (moved || !prev.place ? await placeName(lat, lon) : prev.place);
+  await getStore().setState('location', JSON.stringify({ lat: +lat.toFixed(4), lon: +lon.toFixed(4), place, source }));
   if (moved) cache = null;
 }
 
@@ -96,6 +98,7 @@ export async function getWeather(force = false): Promise<Weather | null> {
     const { kind, label } = describe(Number(c.weather_code ?? 0));
     const data: Weather = {
       place: loc.place,
+      locationSource: loc.source,
       lat: loc.lat,
       lon: loc.lon,
       temp: Math.round(Number(c.temperature_2m ?? 0)),

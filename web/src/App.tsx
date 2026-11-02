@@ -73,7 +73,7 @@ function usePhase(sun?: { sunrise: string | null; sunset: string | null }): Phas
 /** Konum izni istenir (Windows/Edge konumu); izin yoksa sunucu .env'deki ya da varsayılan konumu kullanır. */
 function useLocationShare(onDone: () => void) {
   useEffect(() => {
-    if (!('geolocation' in navigator)) return;
+    if (!('geolocation' in navigator) || !getSettings().autoLocation) return;
     navigator.geolocation.getCurrentPosition(
       (pos) => void api.setLocation(pos.coords.latitude, pos.coords.longitude).then(onDone).catch(() => undefined),
       () => undefined,
@@ -570,7 +570,10 @@ export default function App() {
         {voiceSegs && <VoiceBriefing key="voice" segments={voiceSegs} phase={phase} onAction={voiceAction} onExit={voiceExit} />}
       </AnimatePresence>
 
-      <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} status={status.data} onVoiceTest={() => void runVoiceTest()} onVoiceDiag={() => void runDiag()} />
+      <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} status={status.data} onVoiceTest={() => void runVoiceTest()} onVoiceDiag={() => void runDiag()} weather={weather.data} onLocationChanged={() => {
+        void weather.refresh();
+        void today.refresh();
+      }} />
 
       <EndOfDayPrompt
         open={eodPrompt && !farewell}

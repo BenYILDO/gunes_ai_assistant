@@ -75,6 +75,7 @@ export function apiRouter() {
         schedule: await nextRuns(),
         usage: await getUsage(),
         models: { chat: config.modelChat, think: config.modelThink, scan: config.modelScan },
+        usagePauseAt: config.usagePauseAt,
         tts: { provider: ttsEnabled() ? 'azure' : 'browser', voice: config.ttsVoice, voices: TTS_VOICES, usage: ttsEnabled() ? await ttsUsage() : null },
         labels: { status: STATUS_TR, stats: STAT_TR },
       });
@@ -198,7 +199,8 @@ export function apiRouter() {
       const lat = Number(req.body?.lat);
       const lon = Number(req.body?.lon);
       if (!Number.isFinite(lat) || !Number.isFinite(lon)) return void res.status(400).json({ error: 'Geçersiz konum.' });
-      await setLocation(lat, lon);
+      const place = typeof req.body?.place === 'string' ? req.body.place.slice(0, 80) : undefined;
+      await setLocation(lat, lon, place, place ? 'manual' : 'browser');
       res.json(await getWeather(true));
     }),
   );

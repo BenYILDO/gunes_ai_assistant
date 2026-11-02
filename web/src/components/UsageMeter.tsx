@@ -24,7 +24,7 @@ const when = (iso: string | null) =>
     : '—';
 
 /** Sıfırlanma zamanı geçtiyse kullanım artık bilinmiyor sayılır (yeni pencere başladı). */
-const effective = (w: UsageWindow | null, now: Date) =>
+export const effective = (w: UsageWindow | null, now: Date) =>
   !w ? null : w.resetsAt && new Date(w.resetsAt) < now ? { ...w, utilization: 0 } : w;
 
 function Ring({ value, label, size = 30 }: { value: number | null; label: string; size?: number }) {
@@ -145,7 +145,7 @@ export function UsageMeter({ usage }: { usage: Usage | null }) {
   );
 }
 
-function WindowRow({ title, w, now }: { title: string; w: UsageWindow | null; now: Date }) {
+export function WindowRow({ title, w, now }: { title: string; w: UsageWindow | null; now: Date }) {
   const v = w?.utilization ?? null;
   return (
     <div>

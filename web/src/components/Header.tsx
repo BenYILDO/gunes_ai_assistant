@@ -7,7 +7,6 @@ import { useNow } from '../lib/hooks';
 import { fmtTime, greetingOf, relTime, type Phase } from '../lib/time';
 import { SunCore } from './SunCore';
 import { Button } from './ui';
-import { UsageMeter } from './UsageMeter';
 import { MicButton } from './MicButton';
 
 export type View = 'briefing' | 'board' | 'wiki' | 'memory' | 'history';
@@ -37,6 +36,10 @@ const TABS: { id: View; label: string; icon: typeof LayoutDashboard }[] = [
 export function Header({ phase, status, view, onView, onRun, onChat, onReplayIntro, showSun, weather, onEndDay, onSettings }: Props) {
   const now = useNow(1000);
   const running = status?.run.running;
+  const five = status?.usage?.fiveHour;
+  const usageHigh = Boolean(
+    five?.utilization !== null && five?.utilization !== undefined && five.utilization >= (status?.usagePauseAt ?? 0.85) && (!five.resetsAt || new Date(five.resetsAt) > now),
+  );
   const user = status?.user;
 
   const hh = now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
@@ -94,11 +97,17 @@ export function Header({ phase, status, view, onView, onRun, onChat, onReplayInt
         </div>
 
         <WeatherChip weather={weather} />
-        <UsageMeter usage={status?.usage ?? null} />
         <MicButton />
 
-        <Button variant="ghost" size="sm" onClick={onSettings} title="Ayarlar (ses, mikrofon, karşılama, bildirimler)" className="h-9 w-9 !px-0">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onSettings}
+          title={usageHigh ? 'Ayarlar — Claude kullanımı yüksek' : 'Ayarlar (ses, yapay zekâ kullanımı, konum, mikrofon, bildirimler)'}
+          className="relative h-9 w-9 !px-0"
+        >
           <Settings2 size={16} />
+          {usageHigh && <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-danger shadow-[0_0_8px_var(--danger)]" />}
         </Button>
 
         <Button

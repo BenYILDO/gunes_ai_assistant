@@ -52,6 +52,9 @@ export interface PendingAction {
 export type WeatherKind = 'clear' | 'partly' | 'clouds' | 'overcast' | 'fog' | 'drizzle' | 'rain' | 'snow' | 'storm';
 export interface Weather {
   place: string | null;
+  locationSource?: string;
+  lat?: number;
+  lon?: number;
   temp: number;
   feelsLike: number | null;
   kind: WeatherKind;
@@ -146,6 +149,7 @@ export interface Status {
   labels: { status: Record<CardStatus, string>; stats: Record<string, string> };
   usage: Usage | null;
   models?: { chat: string; think: string; scan: string };
+  usagePauseAt?: number;
   tts: { provider: 'azure' | 'browser'; voice: string; voices?: { id: string; label: string; note: string }[]; usage: { month: string; chars: number; limit: number } | null };
 }
 
@@ -175,7 +179,7 @@ export const api = {
   actions: () => req<PendingAction[]>('/actions'),
   today: () => req<Today>('/today'),
   weather: () => req<Weather | null>('/weather'),
-  setLocation: (lat: number, lon: number) => req<Weather | null>('/location', json('POST', { lat, lon })),
+  setLocation: (lat: number, lon: number, place?: string) => req<Weather | null>('/location', json('POST', { lat, lon, place })),
   wiki: () => req<WikiPageMeta[]>('/wiki'),
   wikiPage: (slug: string) =>
     req<{ page: WikiPageFull; backlinks: { slug: string; title: string; kind: string }[]; cards: { id: string; title: string; status: CardStatus }[] }>(

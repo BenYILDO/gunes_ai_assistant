@@ -8,10 +8,12 @@ export interface Settings {
   autoVoice: boolean;
   /** Karşılama ekranı: her açılışta / günde bir / kapalı */
   introMode: 'always' | 'daily' | 'off';
+  /** Açılışta tarayıcı konumunu otomatik kullan (elle şehir seçilince kapanır) */
+  autoLocation: boolean;
 }
 
 const KEY = 'gunes.settings';
-const DEFAULTS: Settings = { speechRate: 1.12, autoVoice: true, introMode: 'always' };
+const DEFAULTS: Settings = { speechRate: 1.12, autoVoice: true, introMode: 'always', autoLocation: true };
 
 export function getSettings(): Settings {
   try {

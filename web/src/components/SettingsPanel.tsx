@@ -1,7 +1,10 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { Bell, Info, Mic, MonitorPlay, Settings2, Volume2, X } from 'lucide-react';
+import { Bell, Cpu, Info, LocateFixed, MapPin, Mic, MonitorPlay, RefreshCw, Search, Settings2, Volume2, X } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
-import type { Status } from '../lib/api';
+import { api, type Status, type Usage, type Weather } from '../lib/api';
+import { useNow } from '../lib/hooks';
+import { effective, WindowRow } from './UsageMeter';
+import { relTime } from '../lib/time';
 import { listener, speechSupported, type ListenState } from '../lib/listener';
 import { setSetting, useSettings } from '../lib/settings';
 import { getTtsVoice, setTtsVoice, setVoiceEnabled, speakAsync, voiceEnabled } from '../lib/speech';
@@ -13,9 +16,12 @@ interface Props {
   status: Status | null;
   onVoiceTest: () => void;
   onVoiceDiag: () => void;
+  weather: Weather | null;
+  /** Konum değişince hava/gündem yenilensin */
+  onLocationChanged: () => void;
 }
 
-export function SettingsPanel({ open, onClose, status, onVoiceTest, onVoiceDiag }: Props) {
+export function SettingsPanel({ open, onClose, status, onVoiceTest, onVoiceDiag, weather, onLocationChanged }: Props) {
   const s = useSettings();
   const [voiceOn, setVoiceOn] = useState(voiceEnabled());
   const [mic, setMic] = useState<ListenState>(listener.state);
@@ -145,6 +151,16 @@ export function SettingsPanel({ open, onClose, status, onVoiceTest, onVoiceDiag 
                 </div>
               </Section>
 
+              {/* ---------------- Yapay zekâ kullanımı */}
+              <Section icon={<Cpu size={14} />} title="Yapay zekâ kullanımı">
+                <UsageSection usage={status?.usage ?? null} pauseAt={status?.usagePauseAt ?? 0.85} models={status?.models} />
+              </Section>
+
+              {/* ---------------- Konum ve hava */}
+              <Section icon={<MapPin size={14} />} title="Konum ve hava">
+                <LocationSection weather={weather} onChanged={onLocationChanged} />
+              </Section>
+
               {/* ---------------- Mikrofon */}
               <Section icon={<Mic size={14} />} title="Mikrofon">
                 <Row
@@ -205,16 +221,8 @@ export function SettingsPanel({ open, onClose, status, onVoiceTest, onVoiceDiag 
                   </dd>
                   <dt className="text-ink-faint">Son tarama</dt>
                   <dd>{status?.schedule.lastCollect ? fmtTime(status.schedule.lastCollect) : '—'}</dd>
-                  {status?.models && (
-                    <>
-                      <dt className="text-ink-faint">Modeller</dt>
-                      <dd>
-                        Sohbet: {status.models.chat} · Planlama: {status.models.think} · Tarama: {status.models.scan}
-                      </dd>
-                    </>
-                  )}
                 </dl>
-                <p className="mt-2 text-[10.5px] leading-snug text-ink-faint">Mesai saatleri ve modeller .env dosyasından değiştirilir.</p>
+                <p className="mt-2 text-[10.5px] leading-snug text-ink-faint">Mesai saatleri .env dosyasından değiştirilir.</p>
               </Section>
             </div>
           </motion.aside>
@@ -288,5 +296,164 @@ function SmallBtn({ children, onClick }: { children: ReactNode; onClick: () => v
     <motion.button whileTap={{ scale: 0.96 }} onClick={onClick} className="rounded-lg border border-line px-3 py-1.5 text-xs text-ink-dim hover:border-line-strong hover:text-ink">
       {children}
     </motion.button>
+  );
+}
+
+function UsageSection({ usage, pauseAt, models }: { usage: Usage | null; pauseAt: number; models?: { chat: string; think: string; scan: string } }) {
+  const now = useNow(30_000);
+  const [local, setLocal] = useState<Usage | null>(null);
+  const [busy, setBusy] = useState(false);
+  const u = local && (!usage || local.updatedAt > usage.updatedAt) ? local : usage;
+  return (
+    <div className="space-y-3">
+      {!u ? (
+        <p className="text-xs text-ink-faint">Henüz bilgi yok; Güneş'in ilk çalışmasında ya da "Güncelle" ile öğrenilir.</p>
+      ) : (
+        <>
+          <WindowRow title="5 saatlik pencere" w={effective(u.fiveHour, now)} now={now} />
+          <WindowRow title="Haftalık pencere" w={effective(u.sevenDay, now)} now={now} />
+          {Object.entries(u.extra ?? {}).map(([k, w]) => (
+            <WindowRow key={k} title={k.replace(/_/g, ' ')} w={effective(w, now)} now={now} />
+          ))}
+        </>
+      )}
+      <div className="flex items-center gap-2">
+        <span className="text-[10.5px] text-ink-faint">{u ? `Güncelleme: ${relTime(u.updatedAt)}` : ''}</span>
+        <button
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              setLocal(await api.refreshUsage());
+            } finally {
+              setBusy(false);
+            }
+          }}
+          className="ml-auto inline-flex items-center gap-1 rounded-lg border border-line px-2.5 py-1 text-[11px] text-ink-dim hover:text-ink disabled:opacity-50"
+        >
+          <RefreshCw size={11} className={busy ? 'animate-spin' : ''} /> Güncelle
+        </button>
+      </div>
+      <div className="rounded-xl border border-line bg-white/[0.03] p-3 text-[11.5px] leading-relaxed text-ink-dim">
+        5 saatlik kullanım <b className="text-ink">%{Math.round(pauseAt * 100)}</b>'i geçince arka plan taramaları ertelenir; sohbete yer kalır. Sohbet ve Claude Code kullanımınız da bu limitlere dahildir.
+        {models && (
+          <div className="mt-1.5 text-ink-faint">
+            Modeller — sohbet: {models.chat} · planlama: {models.think} · tarama: {models.scan}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+interface GeoResult { name: string; admin1?: string; country?: string; latitude: number; longitude: number }
+
+function LocationSection({ weather, onChanged }: { weather: Weather | null; onChanged: () => void }) {
+  const settings = useSettings();
+  const [q, setQ] = useState('');
+  const [results, setResults] = useState<GeoResult[]>([]);
+  const [msg, setMsg] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  // Şehir arama (Open-Meteo, anahtarsız)
+  useEffect(() => {
+    const t = q.trim();
+    if (t.length < 2) return setResults([]);
+    const h = setTimeout(async () => {
+      try {
+        const r = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(t)}&count=6&language=tr&format=json`);
+        const j = (await r.json()) as { results?: GeoResult[] };
+        setResults(j.results ?? []);
+      } catch {
+        setResults([]);
+      }
+    }, 350);
+    return () => clearTimeout(h);
+  }, [q]);
+
+  const choose = async (g: GeoResult) => {
+    setBusy(true);
+    const place = [g.name, g.admin1 && g.admin1 !== g.name ? g.admin1 : null].filter(Boolean).join(', ');
+    try {
+      await api.setLocation(g.latitude, g.longitude, place);
+      setSetting('autoLocation', false);
+      setQ('');
+      setResults([]);
+      setMsg(`Konum: ${place}`);
+      onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const useMine = () => {
+    if (!('geolocation' in navigator)) return setMsg('Bu tarayıcı konum vermiyor.');
+    setBusy(true);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        await api.setLocation(pos.coords.latitude, pos.coords.longitude).catch(() => undefined);
+        setSetting('autoLocation', true);
+        setMsg('Bulunduğunuz konum kullanılıyor.');
+        setBusy(false);
+        onChanged();
+      },
+      () => {
+        setMsg('Konum izni verilmedi — şehir arayarak seçebilirsiniz.');
+        setBusy(false);
+      },
+      { timeout: 15_000 },
+    );
+  };
+
+  const src: Record<string, string> = { browser: 'Otomatik (tarayıcı konumu)', manual: 'Elle seçildi', env: '.env dosyasından', default: 'Varsayılan' };
+  return (
+    <div className="space-y-3">
+      <div className="rounded-xl border border-line bg-white/[0.03] p-3">
+        <div className="flex items-center gap-2 text-sm">
+          <MapPin size={14} className="text-accent" />
+          <span className="text-ink">{weather?.place ?? 'Bilinmiyor'}</span>
+          {weather && <span className="ml-auto text-xs text-ink-dim">{weather.temp}° · {weather.label}</span>}
+        </div>
+        <div className="mt-1 text-[10.5px] text-ink-faint">
+          {src[weather?.locationSource ?? ''] ?? '—'}
+          {weather?.lat !== undefined && ` · ${weather.lat.toFixed(3)}, ${weather.lon?.toFixed(3)}`}
+        </div>
+      </div>
+
+      <div className="relative">
+        <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-faint" />
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Şehir ya da ilçe ara (ör. Kilimli, Kadıköy)"
+          className="h-9 w-full rounded-lg border border-line bg-black/30 pl-8 pr-2 text-sm outline-none focus:border-[color:var(--accent)]/60"
+        />
+        {results.length > 0 && (
+          <div className="absolute inset-x-0 top-[calc(100%+4px)] z-10 overflow-hidden rounded-lg border border-line-strong bg-[rgb(14_11_32/0.98)] shadow-xl">
+            {results.map((g, i) => (
+              <button key={i} disabled={busy} onClick={() => void choose(g)} className="block w-full px-3 py-2 text-left text-sm hover:bg-white/[0.07]">
+                {g.name}
+                <span className="text-xs text-ink-faint">
+                  {g.admin1 ? ` · ${g.admin1}` : ''}
+                  {g.country && !/türkiye/i.test(g.country) ? ` · ${g.country}` : ''}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2">
+        <SmallBtn onClick={useMine}>
+          <span className="inline-flex items-center gap-1">
+            <LocateFixed size={12} /> Bulunduğum konumu kullan
+          </span>
+        </SmallBtn>
+        {msg && <span className="text-[11px] text-ink-faint">{msg}</span>}
+      </div>
+      <Row label="Konumu otomatik algıla" hint="Açılışta tarayıcı konumu kullanılır; elle şehir seçince kapanır">
+        <Toggle on={settings.autoLocation} onChange={(v) => setSetting('autoLocation', v)} />
+      </Row>
+    </div>
   );
 }
