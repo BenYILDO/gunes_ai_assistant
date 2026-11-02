@@ -2,7 +2,7 @@
   "mcpServers": {
     "gunes": {
       "command": "node",
-      "args": ["server/dist/mcp.js"]
+      "args": ["--use-system-ca", "server/dist/mcp.js"]
     }
   }
 }

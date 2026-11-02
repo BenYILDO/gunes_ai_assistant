@@ -1,7 +1,7 @@
 /**
  * Kurulum kontrolü: npm run doctor  (canlı test için: npm run doctor -- --live)
  */
-import { execFileSync } from 'node:child_process';
+import { execSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { config, hasSupabase, ROOT } from './config.js';
@@ -15,14 +15,15 @@ let problems = 0;
 
 console.log('\n☀️  Güneş kurulum kontrolü\n');
 
-const major = Number(process.versions.node.split('.')[0]);
-major >= 20 ? okMark(`Node.js ${process.versions.node}`) : (bad(`Node.js 20+ gerekli (şu an ${process.versions.node})`), problems++);
+const [maj, min] = process.versions.node.split('.').map(Number);
+maj > 22 || (maj === 22 && min >= 15)
+  ? okMark(`Node.js ${process.versions.node}`)
+  : (bad(`Node.js 22.15+ gerekli (şu an ${process.versions.node}) — kurumsal sertifika desteği için`), problems++);
 
 existsSync(join(ROOT, '.env')) ? okMark('.env dosyası var') : warn('.env yok — .env.example dosyasını .env olarak kopyalayın');
 
 try {
-  const isWin = process.platform === 'win32';
-  const v = execFileSync(config.claudeBin, ['--version'], { encoding: 'utf8', shell: isWin && !/\.exe$/i.test(config.claudeBin) }).trim();
+  const v = execSync(`"${config.claudeBin}" --version`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
   okMark(`Claude Code CLI: ${v}`);
 } catch {
   bad(`'${config.claudeBin}' bulunamadı. Claude Code'u kurun ve 'claude' ile bir kez giriş yapın (claude.ai hesabınızla).`);
@@ -34,7 +35,17 @@ if (hasSupabase) {
     await getStore().listProjects();
     okMark('Supabase bağlantısı ve şema tamam');
   } catch (e) {
-    bad(`Supabase: ${(e as Error).message}\n     → supabase/migrations/0001_init.sql dosyasını SQL Editor'de çalıştırdınız mı?`);
+    // Ağ hatası mı, şema hatası mı? Doğrudan deneyip nedeni göster.
+    const cause = await fetch(`${config.supabaseUrl}/rest/v1/`)
+      .then(() => null)
+      .catch((err: { cause?: { code?: string; message?: string } }) => err.cause);
+    if (cause?.code === 'SELF_SIGNED_CERT_IN_CHAIN' || cause?.code === 'UNABLE_TO_GET_ISSUER_CERT_LOCALLY') {
+      bad('Supabase: şirket ağı SSL denetimi yapıyor ve Node bu sertifikaya güvenmiyor.\n     → Komutları npm üzerinden çalıştırın (npm start / npm run doctor); --use-system-ca ayarı otomatik eklenir.');
+    } else if (cause) {
+      bad(`Supabase'e ulaşılamıyor: ${cause.code ?? ''} ${cause.message ?? ''}\n     → .env içindeki SUPABASE_URL doğru mu? Ağ/güvenlik duvarı engelliyor olabilir.`);
+    } else {
+      bad(`Supabase: ${(e as Error).message}\n     → supabase/migrations/0001_init.sql dosyasını SQL Editor'de çalıştırdınız mı?`);
+    }
     problems++;
   }
 } else warn('Supabase ayarlı değil — yerel dosya modu (data/local-db.json) kullanılacak');
@@ -76,4 +87,5 @@ if (process.argv.includes('--live')) {
 }
 
 console.log(problems ? `\n${problems} sorun bulundu.\n` : '\nHer şey hazır görünüyor. ☀️\n');
-process.exit(problems ? 1 : 0);
+// process.exit yerine exitCode: Windows'ta kapanış sırasında libuv assertion hatasını önler
+process.exitCode = problems ? 1 : 0;

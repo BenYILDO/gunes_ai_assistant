@@ -21,12 +21,15 @@ import {
 export const AGENT_HOME = join(DATA_DIR, 'agent-home');
 if (!existsSync(AGENT_HOME)) mkdirSync(AGENT_HOME, { recursive: true });
 
-/** Güneş MCP sunucusunun başlatma tanımı (derlenmiş ya da geliştirme modunda). */
+/**
+ * Güneş MCP sunucusunun başlatma tanımı (derlenmiş ya da geliştirme modunda).
+ * --use-system-ca: kurumsal ağlarda (SSL denetimi) Windows'un güvendiği sertifikaları kullan.
+ */
 export function gunesMcpServerDef() {
   const isDev = fileURLToPath(import.meta.url).endsWith('.ts');
   return isDev
-    ? { command: process.execPath, args: ['--import', 'tsx', join(ROOT, 'server', 'src', 'mcp.ts')], cwd: ROOT }
-    : { command: process.execPath, args: [join(ROOT, 'server', 'dist', 'mcp.js')], cwd: ROOT };
+    ? { command: process.execPath, args: ['--use-system-ca', '--import', 'tsx', join(ROOT, 'server', 'src', 'mcp.ts')], cwd: ROOT }
+    : { command: process.execPath, args: ['--use-system-ca', join(ROOT, 'server', 'dist', 'mcp.js')], cwd: ROOT };
 }
 
 let mcpConfigPath: string | null = null;

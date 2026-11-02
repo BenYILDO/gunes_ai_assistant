@@ -5,22 +5,22 @@
   "description": "Güneş — Outlook ve Teams'i takip eden, kanban yöneten, hafızalı kişisel asistan",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.15"
   },
   "scripts": {
     "dev": "node scripts/dev.mjs",
-    "dev:server": "tsx watch server/src/index.ts",
+    "dev:server": "tsx watch --use-system-ca server/src/index.ts",
     "dev:web": "vite --config web/vite.config.ts",
     "build": "npm run build:server && npm run build:web",
     "build:server": "tsc -p server/tsconfig.json",
     "build:web": "vite build --config web/vite.config.ts",
-    "start": "node server/dist/index.js",
-    "doctor": "node server/dist/doctor.js",
-    "run:morning": "node server/dist/cli.js morning",
-    "run:tracker": "node server/dist/cli.js tracker",
-    "run:backfill": "node server/dist/cli.js backfill",
+    "start": "node --use-system-ca server/dist/index.js",
+    "doctor": "node --use-system-ca server/dist/doctor.js",
+    "run:morning": "node --use-system-ca server/dist/cli.js morning",
+    "run:tracker": "node --use-system-ca server/dist/cli.js tracker",
+    "run:backfill": "node --use-system-ca server/dist/cli.js backfill",
     "typecheck": "tsc -p server/tsconfig.json --noEmit && tsc -p web/tsconfig.json --noEmit",
-    "demo": "node server/dist/demo.js"
+    "demo": "node --use-system-ca server/dist/demo.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",

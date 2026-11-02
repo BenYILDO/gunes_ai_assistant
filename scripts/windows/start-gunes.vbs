@@ -38,7 +38,7 @@ End Function
 If Not IsUp() Then
   If Not fso.FolderExists(root & "\data") Then fso.CreateFolder(root & "\data")
   sh.CurrentDirectory = root
-  sh.Run "cmd /c node server\dist\index.js >> data\gunes.log 2>&1", 0, False
+  sh.Run "cmd /c node --use-system-ca server\dist\index.js >> data\gunes.log 2>&1", 0, False
   For i = 1 To 60
     WScript.Sleep 500
     If IsUp() Then Exit For

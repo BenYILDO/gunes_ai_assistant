@@ -28,7 +28,12 @@ if (existsSync(webDist)) {
 }
 
 const store = getStore();
-await ensureSoul(store);
+try {
+  await ensureSoul(store);
+} catch (e) {
+  // Veritabanına ulaşılamasa bile arayüz açılsın; hata loglansın ve doctor ile incelensin.
+  console.error('[güneş] Veri deposuna bağlanılamadı:', (e as Error).message, '→ npm run doctor');
+}
 
 // Sadece bu bilgisayardan erişilebilir (127.0.0.1)
 app.listen(config.port, '127.0.0.1', () => {

@@ -42,7 +42,7 @@ Claude panoya ve hafızaya yalnızca **Güneş MCP aracı** (`server/src/mcp.ts`
 ## Kurulum (Windows)
 
 ### 0. Ön koşullar
-- [Node.js LTS](https://nodejs.org) (20 veya üstü)
+- [Node.js LTS](https://nodejs.org) (22.15 veya üstü)
 - [Claude Code](https://code.claude.com). Kurduktan sonra bir terminalde `claude` yazın ve **claude.ai hesabınızla** giriş yapın.
 - claude.ai → Ayarlar → Connectors'ta **Microsoft 365** bağlı olmalı.
 
@@ -125,6 +125,7 @@ Arayüz adresine eklenebilen parametreler: `?intro=1` karşılamayı zorla oynat
 - **Microsoft 365 araçları görünmüyor:** Claude Code'a claude.ai hesabıyla giriş yaptığınızdan ve connector'ın claude.ai'de bağlı olduğundan emin olun. Sonra `npm run doctor -- --live` çalıştırın.
 - **`claude` bulunamadı:** `.env` dosyasında `CLAUDE_BIN` değerine tam yolu yazın (örn. `C:\Users\<siz>\.local\bin\claude.exe`).
 - **Sesli karşılama yok:** Edge zaten açıksa ses izni bayrağı uygulanmaz; başlıktaki hoparlör ikonundan sesi açıp kapatabilirsiniz. Windows'ta doğal Türkçe ses için Ayarlar → Zaman ve dil → Konuşma'dan "Microsoft Emel" sesini ekleyin.
+- **Supabase: `fetch failed` / `SELF_SIGNED_CERT_IN_CHAIN`:** Şirket ağı SSL denetimi yapıyordur. Güneş, Node'u `--use-system-ca` ile başlatarak Windows'un güvendiği (IT'nin yüklediği) sertifikaları kullanır; denetim atlanmaz. Komutları her zaman `npm ...` veya masaüstü kısayolu üzerinden çalıştırın.
 - **Loglar:** `data\gunes.log`
 
 ## Yol haritası
