@@ -424,6 +424,16 @@ server.registerTool(
 );
 
 server.registerTool(
+  'end_day',
+  {
+    description:
+      "Kullanıcı günü bitirmek istediğinde ('bugünlük bu kadar', 'çıkıyorum', 'mesai bitti', 'yarın görüşürüz' gibi) kullan: arayüzde uğurlama ekranı açılır, son değişiklikler kaydedilir ve pencere kapanır. Kullanıcıya kısa ve sıcak bir veda cümlesi yaz.",
+    inputSchema: {},
+  },
+  async () => ok('Uğurlama ekranı açılıyor; gün sonu kaydı arayüzden yapılacak.'),
+);
+
+server.registerTool(
   'propose_deletion',
   {
     description:

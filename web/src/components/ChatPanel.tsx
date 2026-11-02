@@ -14,6 +14,8 @@ interface Props {
   onActivity: () => void;
   /** Açılınca gösterilecek sohbet (ör. Güneş'in başlattığı) */
   focusSession?: string | null;
+  /** Kullanıcı günü kapatmak istediğinde ("bugünlük bu kadar") */
+  onEndDay?: () => void;
 }
 
 interface LiveMsg extends Omit<ChatMessage, 'id' | 'created_at'> {
@@ -28,7 +30,7 @@ const STARTERS = [
   'Rakiplerimiz depo otomasyonunda neler yapıyor? Araştır',
 ];
 
-export function ChatPanel({ open, phase, userName, onClose, onActivity, focusSession }: Props) {
+export function ChatPanel({ open, phase, userName, onClose, onActivity, focusSession, onEndDay }: Props) {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<LiveMsg[]>([]);
@@ -73,6 +75,12 @@ export function ChatPanel({ open, phase, userName, onClose, onActivity, focusSes
   const send = async (text: string) => {
     const msg = text.trim();
     if (!msg || busy) return;
+    // Açık veda ifadeleri: modeli beklemeden uğurlama ekranını aç
+    if (onEndDay && /^(bugünlük (bu kadar|yeter)|(ben )?çıkıyorum|mesai (bitti|tamam)|günü kapat|iyi akşamlar|yarın görüşürüz)[\s.!,]*$/i.test(msg.toLocaleLowerCase('tr'))) {
+      setInput('');
+      onEndDay();
+      return;
+    }
     setInput('');
     setBusy(true);
     const liveId = `live-${Date.now()}`;
@@ -93,6 +101,7 @@ export function ChatPanel({ open, phase, userName, onClose, onActivity, focusSes
           else if (e.type === 'text') patch((m) => ({ ...m, content: m.content + e.text }));
           else if (e.type === 'tool') {
             usedTools = true;
+            if (e.label === 'Günü kapatıyor') setTimeout(() => onEndDay?.(), 1500);
             patch((m) => ({ ...m, tools: [...m.tools, e.label], content: m.content && !m.content.endsWith('\n\n') ? m.content + '\n\n' : m.content }));
           } else if (e.type === 'tool_done') {
             const secs = e.ms < 1000 ? '<1 sn' : `${Math.round(e.ms / 1000)} sn`;

@@ -41,7 +41,7 @@ export const config = {
   schedule: {
     enabled: env('GUNES_SCHEDULER', 'on') !== 'off',
     morningTime: env('GUNES_MORNING_TIME', '08:30'),
-    workEnd: env('GUNES_WORK_END', '18:30'),
+    workEnd: env('GUNES_WORK_END', '18:00'),
     trackerEveryHours: Number(env('GUNES_TRACKER_EVERY_HOURS', '2')),
     /** 1=Pazartesi … 7=Pazar */
     workDays: list('GUNES_WORK_DAYS', '1,2,3,4,5').map(Number),

@@ -24,6 +24,8 @@ export interface Weather {
   todayMax: number | null;
   todayMin: number | null;
   rainChance: number | null;
+  /** Yarının tahmini (akşam uğurlaması için) */
+  tomorrow: { kind: WeatherKind; label: string; max: number | null; min: number | null; rainChance: number | null } | null;
   updatedAt: string;
 }
 
@@ -81,7 +83,7 @@ export async function getWeather(force = false): Promise<Weather | null> {
   const url =
     `https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}` +
     `&current=temperature_2m,apparent_temperature,weather_code,is_day,cloud_cover,wind_speed_10m` +
-    `&daily=sunrise,sunset,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=1`;
+    `&daily=sunrise,sunset,weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=2`;
   try {
     const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -109,6 +111,15 @@ export async function getWeather(force = false): Promise<Weather | null> {
       todayMax: d.temperature_2m_max?.[0] !== undefined ? Math.round(d.temperature_2m_max[0]) : null,
       todayMin: d.temperature_2m_min?.[0] !== undefined ? Math.round(d.temperature_2m_min[0]) : null,
       rainChance: d.precipitation_probability_max?.[0] ?? null,
+      tomorrow:
+        d.weather_code?.[1] !== undefined
+          ? {
+              ...describe(Number(d.weather_code[1])),
+              max: d.temperature_2m_max?.[1] !== undefined ? Math.round(d.temperature_2m_max[1]) : null,
+              min: d.temperature_2m_min?.[1] !== undefined ? Math.round(d.temperature_2m_min[1]) : null,
+              rainChance: d.precipitation_probability_max?.[1] ?? null,
+            }
+          : null,
       updatedAt: new Date().toISOString(),
     };
     cache = { at: Date.now(), data };

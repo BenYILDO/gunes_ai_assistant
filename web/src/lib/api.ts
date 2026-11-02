@@ -63,6 +63,7 @@ export interface Weather {
   todayMax: number | null;
   todayMin: number | null;
   rainChance: number | null;
+  tomorrow: { kind: WeatherKind; label: string; max: number | null; min: number | null; rainChance: number | null } | null;
 }
 export interface Today {
   meetings: { at: string; title: string }[];
@@ -75,6 +76,22 @@ export interface Today {
 }
 export interface WikiPageMeta { id: string; slug: string; title: string; kind: string; summary: string; links: string[]; updated_at: string }
 export interface WikiPageFull extends WikiPageMeta { content: string; sources: SourceRef[] }
+
+export interface DayCard { id: string; title: string; requested_by: string | null; due_date: string | null; priority: Priority; status: CardStatus }
+export interface DaySummary {
+  today: string;
+  tomorrow: string;
+  closed: DayCard[];
+  created: DayCard[];
+  progressed: DayCard[];
+  carry: DayCard[];
+  dueTomorrow: DayCard[];
+  meetingsTomorrow: { at: string; title: string }[];
+  review: number;
+  mailsToday: number;
+  weather: Weather | null;
+}
+export interface DayEndResult { steps: { key: string; ok: boolean; note?: string }[]; summary: DaySummary }
 
 export interface Nudge { id: string; title: string; message: string; created_at: string }
 
@@ -167,6 +184,10 @@ export const api = {
     req(`/suggestions/${id}`, json('PATCH', { status, lesson })),
   run: (kind: 'morning' | 'tracker' | 'backfill' | 'wiki') => req(`/run/${kind}`, json('POST')),
   nudges: () => req<Nudge[]>('/nudges'),
+  daySummary: () => req<DaySummary>('/day/summary'),
+  endDay: () => req<DayEndResult>('/day/end', json('POST')),
+  closeApp: () => req('/app/close', json('POST')),
+  dayState: () => req<{ dayEnded: string | null }>('/day/state'),
   seenNudge: (id: string) => req(`/nudges/${id}/seen`, json('POST')),
   presence: (visible: boolean) => req('/presence', json('POST', { visible })),
   refreshUsage: () => req<Usage | null>('/usage/refresh', json('POST')),

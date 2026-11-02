@@ -46,6 +46,10 @@ If Not IsUp() Then
 End If
 
 If Not silent Then
-  ' Frameless app window in Edge; autoplay allowed so the greeting can speak.
-  sh.Run "cmd /c start """" msedge --app=" & url & " --autoplay-policy=no-user-gesture-required --window-size=1600,960", 0, False
+  ' Frameless app window in Edge with its own profile (Gunes\edge-profile):
+  ' - autoplay is always allowed so the greeting can speak
+  ' - "Bugunluk yeter" can close only this window, not the user's other Edge windows
+  Dim profile
+  profile = sh.ExpandEnvironmentStrings("%LOCALAPPDATA%") & "\Gunes\edge-profile"
+  sh.Run "cmd /c start """" msedge --app=" & url & " --user-data-dir=""" & profile & """ --no-first-run --autoplay-policy=no-user-gesture-required --window-size=1600,960", 0, False
 End If

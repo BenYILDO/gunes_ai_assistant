@@ -32,7 +32,7 @@ export function Button({ variant = 'subtle', size = 'md', className = '', childr
     <motion.button
       whileHover={{ y: -1 }}
       whileTap={{ scale: 0.96 }}
-      className={`inline-flex items-center justify-center rounded-xl transition-colors disabled:pointer-events-none disabled:opacity-40 ${v} ${s} ${className}`}
+      className={`inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-xl transition-colors disabled:pointer-events-none disabled:opacity-40 ${v} ${s} ${className}`}
       {...rest}
     >
       {children}

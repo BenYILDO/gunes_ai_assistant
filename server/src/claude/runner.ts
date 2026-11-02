@@ -54,7 +54,7 @@ export function toolPreset(preset: ToolPreset) {
   const read = M365_READ_TOOLS.map(m365);
   const forbidden = [...M365_FORBIDDEN_TOOLS.map(m365), 'Bash', 'PowerShell', 'Edit', 'Write', 'NotebookEdit'];
   /** Sadece sohbete açık araçlar: ajanlar tarama başlatıp döngüye girmesin, silme önermesin. */
-  const chatOnly = [gunesTool('start_scan'), gunesTool('propose_deletion')];
+  const chatOnly = [gunesTool('start_scan'), gunesTool('propose_deletion'), gunesTool('end_day')];
   /** Sohbette Güneş zaten konuşuyor; kendine dürtme göndermesin */
   const agentOnly = [gunesTool('nudge_user')];
   switch (preset) {

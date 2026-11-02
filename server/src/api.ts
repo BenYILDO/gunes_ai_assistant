@@ -9,6 +9,7 @@ import { CARD_STATUSES, getStore, MEMORY_KINDS, PRIORITIES, type Card, type Memo
 import { localDate } from './scheduler.js';
 import { getWeather, setLocation } from './weather.js';
 import { listUnseen, markPresence, markSeen } from './nudges.js';
+import { closeAppWindow, daySummary, endDay } from './day.js';
 
 const wrap =
   (fn: (req: Request, res: Response) => Promise<unknown>) => (req: Request, res: Response, next: NextFunction) =>
@@ -113,6 +114,25 @@ export function apiRouter() {
         weather,
       });
     }),
+  );
+
+  // ---------- Gün sonu
+  r.get(
+    '/day/summary',
+    wrap(async (_req, res) => res.json(await daySummary())),
+  );
+  r.post(
+    '/day/end',
+    wrap(async (_req, res) => res.json(await endDay())),
+  );
+  r.post('/app/close', (_req, res) => {
+    // Pencere kendini kapatamazsa (Edge --app kısıtı) sunucu Güneş profilli Edge'i kapatır
+    setTimeout(() => closeAppWindow(), 400);
+    res.json({ ok: true });
+  });
+  r.get(
+    '/day/state',
+    wrap(async (_req, res) => res.json({ dayEnded: await store.getState('day_ended') })),
   );
 
   // ---------- Güneş'in seslenmeleri (pop-up)

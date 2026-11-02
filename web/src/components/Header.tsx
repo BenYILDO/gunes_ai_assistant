@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { BookOpen, Brain, History, LayoutDashboard, MessageCircle, Play, RefreshCw, Sparkles, Volume2, VolumeX } from 'lucide-react';
+import { BookOpen, Brain, History, LayoutDashboard, MoonStar, Sunrise, MessageCircle, Play, RefreshCw, Sparkles, Volume2, VolumeX } from 'lucide-react';
 import { useState } from 'react';
 import type { Status, Weather } from '../lib/api';
 import { WeatherChip } from './WeatherChip';
@@ -10,7 +10,7 @@ import { SunCore } from './SunCore';
 import { Button } from './ui';
 import { UsageMeter } from './UsageMeter';
 
-export type View = 'board' | 'wiki' | 'memory' | 'history';
+export type View = 'briefing' | 'board' | 'wiki' | 'memory' | 'history';
 
 interface Props {
   phase: Phase;
@@ -22,16 +22,18 @@ interface Props {
   onReplayIntro: () => void;
   showSun: boolean;
   weather: Weather | null;
+  onEndDay: () => void;
 }
 
 const TABS: { id: View; label: string; icon: typeof LayoutDashboard }[] = [
+  { id: 'briefing', label: 'Brifing', icon: Sunrise },
   { id: 'board', label: 'Pano', icon: LayoutDashboard },
   { id: 'wiki', label: 'Wiki', icon: BookOpen },
   { id: 'memory', label: 'Hafıza', icon: Brain },
   { id: 'history', label: 'Geçmiş', icon: History },
 ];
 
-export function Header({ phase, status, view, onView, onRun, onChat, onReplayIntro, showSun, weather }: Props) {
+export function Header({ phase, status, view, onView, onRun, onChat, onReplayIntro, showSun, weather, onEndDay }: Props) {
   const now = useNow(1000);
   const [voice, setVoice] = useState(voiceEnabled());
   const running = status?.run.running;
@@ -49,14 +51,14 @@ export function Header({ phase, status, view, onView, onRun, onChat, onReplayInt
 
       <div className="min-w-0">
         <motion.div
-          className="font-display text-lg font-semibold leading-tight"
+          className="whitespace-nowrap font-display text-lg font-semibold leading-tight"
           initial={{ opacity: 0, x: -10 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.2 }}
         >
           {greetingOf(now)}, <span className="accent-text">{user ? `${user.name} ${user.title}` : '…'}</span>
         </motion.div>
-        <div className="mt-0.5 flex items-center gap-2 text-xs text-ink-faint">
+        <div className="mt-0.5 flex items-center gap-2 whitespace-nowrap text-xs text-ink-faint">
           <span className="capitalize">{date}</span>
           <span>·</span>
           <StatusLine status={status} />
@@ -120,7 +122,12 @@ export function Header({ phase, status, view, onView, onRun, onChat, onReplayInt
           title="Outlook ve Teams'i şimdi tara"
         >
           {running ? <RefreshCw size={15} className="animate-spin" /> : <Play size={15} />}
-          <span className="hidden sm:inline">{running ? 'Çalışıyor' : 'Şimdi tara'}</span>
+          <span className="hidden min-[1750px]:inline">{running ? 'Çalışıyor' : 'Şimdi tara'}</span>
+        </Button>
+
+        <Button variant="subtle" onClick={onEndDay} title="Bugünlük yeter: son değişiklikleri kaydet ve kapat" className="h-9 w-9 !px-0 min-[1750px]:w-auto min-[1750px]:!px-3.5">
+          <MoonStar size={15} />
+          <span className="hidden min-[1750px]:inline">Bugünlük yeter</span>
         </Button>
 
         <Button variant="primary" onClick={onChat}>

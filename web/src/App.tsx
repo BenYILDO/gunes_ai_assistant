@@ -2,6 +2,7 @@ import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, type Card, type CardStatus, type Nudge, type PendingAction, type Suggestion, type WeatherKind } from './lib/api';
 import { buildAgenda } from './lib/agenda';
+import { voiceEnabled as voiceEnabledNow } from './lib/speech';
 import { Approvals } from './components/Approvals';
 import { useLocalFlag, usePoll } from './lib/hooks';
 import { phaseOf, relTime, type Phase } from './lib/time';
@@ -14,6 +15,9 @@ import { HistoryView } from './components/HistoryView';
 import { Intro } from './components/Intro';
 import { MemoryView } from './components/MemoryView';
 import { WikiView } from './components/WikiView';
+import { BriefingView } from './components/BriefingView';
+import { Farewell } from './components/Farewell';
+import { EndOfDayPrompt } from './components/EndOfDayPrompt';
 import { NudgePopup } from './components/NudgePopup';
 import { Sky } from './components/Sky';
 import { SuggestionsPanel } from './components/Suggestions';
@@ -78,7 +82,25 @@ export default function App() {
   const weatherKind = forcedWeather ?? weather.data?.kind ?? null;
   const phase = usePhase(weather.data ?? undefined);
   const toast = useToast();
-  const [view, setView] = useState<View>('board');
+  // Günün ilk açılışında Brifing ekranı, sonra son kullanılan ekran
+  const [view, setViewState] = useState<View>(() => {
+    if (SPEAK_TODAY) return 'briefing';
+    try {
+      return (localStorage.getItem('gunes.view') as View) || 'briefing';
+    } catch {
+      return 'briefing';
+    }
+  });
+  const setView = (v: View) => {
+    setViewState(v);
+    try {
+      localStorage.setItem('gunes.view', v);
+    } catch {
+      /* yoksay */
+    }
+  };
+  const [farewell, setFarewell] = useState(false);
+  const [eodPrompt, setEodPrompt] = useState(false);
   const [chatOpen, setChatOpen] = useState(Boolean(params.get('chat')));
   const [focusSession, setFocusSession] = useState<string | null>(params.get('chat'));
   const [intro, setIntro] = useState(shouldPlayIntro);
@@ -112,6 +134,30 @@ export default function App() {
       window.removeEventListener('click', ask);
     };
   }, []);
+
+  // Mesai bitince (günde bir kez) "Günü kapatalım mı?" diye sor
+  useEffect(() => {
+    const check = async () => {
+      const end = status.data?.schedule.schedule.workEnd;
+      if (!end || document.visibilityState !== 'visible') return;
+      const now = new Date();
+      const hhmm = now.toTimeString().slice(0, 5);
+      const key = now.toLocaleDateString('sv-SE');
+      if (hhmm < end) return;
+      try {
+        if (localStorage.getItem('gunes.eodAsked') === key) return;
+        const st = await api.dayState();
+        if (st.dayEnded && new Date(st.dayEnded).toLocaleDateString('sv-SE') === key) return;
+        localStorage.setItem('gunes.eodAsked', key);
+      } catch {
+        return;
+      }
+      setEodPrompt(true);
+    };
+    void check();
+    const t = setInterval(() => void check(), 60_000);
+    return () => clearInterval(t);
+  }, [status.data?.schedule.schedule.workEnd]);
 
   const talkNudge = useCallback((n: Nudge) => {
     nudges.setData((list) => list?.filter((x) => x.id !== n.id) ?? list);
@@ -287,6 +333,7 @@ export default function App() {
           }}
           showSun={!intro}
           weather={weather.data}
+          onEndDay={() => setFarewell(true)}
         />
 
         {offline && (
@@ -297,6 +344,27 @@ export default function App() {
 
         <main className={`min-h-0 flex-1 px-6 pb-5 transition-[padding] duration-500 ${chatOpen ? 'lg:pr-[490px]' : ''}`}>
           <AnimatePresence mode="wait">
+            {view === 'briefing' && (
+              <motion.div key="briefing" className="h-full" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.15 } }}>
+                <BriefingView
+                  phase={phase}
+                  status={status.data}
+                  userName={user ? `${user.name} ${user.title}` : ''}
+                  briefing={briefing.data?.morning ?? null}
+                  updates={briefing.data?.updates ?? []}
+                  today={today.data}
+                  agenda={agenda.items}
+                  weather={weather.data}
+                  suggestions={suggestions.data ?? []}
+                  actions={actions.data ?? []}
+                  onAct={(s, st, l) => void actSuggestion(s, st, l)}
+                  onResolve={(a, d) => void resolveAction(a, d)}
+                  onOpenCard={setOpenCardId}
+                  onRun={(k) => void run(k)}
+                  onGoBoard={() => setView('board')}
+                />
+              </motion.div>
+            )}
             {view === 'board' && (
               <motion.div
                 key="board"
@@ -368,7 +436,22 @@ export default function App() {
         }}
         focusSession={focusSession}
         onActivity={refreshAll}
+        onEndDay={() => setFarewell(true)}
       />
+
+      <EndOfDayPrompt
+        open={eodPrompt && !farewell}
+        phase={phase}
+        onYes={() => {
+          setEodPrompt(false);
+          setFarewell(true);
+        }}
+        onNo={() => setEodPrompt(false)}
+      />
+
+      <AnimatePresence>
+        {farewell && <Farewell key="farewell" userName={user ? `${user.name} ${user.title}` : ''} voice={voiceEnabledNow()} onCancel={() => setFarewell(false)} />}
+      </AnimatePresence>
 
       <NudgePopup items={chatOpen ? (nudges.data ?? []).filter((n) => n.id !== focusSession) : (nudges.data ?? [])} phase={phase} onTalk={talkNudge} onLater={laterNudge} />
 

@@ -27,6 +27,7 @@ const TOOL_TR: Record<string, string> = {
   search_events: 'Geçmişi tarıyor',
   WebSearch: 'Web\'de araştırıyor',
   start_scan: 'Taramayı başlatıyor',
+  end_day: 'Günü kapatıyor',
   propose_deletion: 'Silme onayı istiyor',
   update_memory: 'Hafızasını düzeltiyor',
   ask_link: 'Size soruyor',
