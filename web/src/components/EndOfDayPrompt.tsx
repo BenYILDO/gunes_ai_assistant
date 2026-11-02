@@ -13,7 +13,7 @@ export function EndOfDayPrompt({ open, phase, onYes, onNo }: { open: boolean; ph
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 20, scale: 0.95 }}
           transition={{ type: 'spring', stiffness: 240, damping: 24 }}
-          className="glass hud-corners fixed bottom-16 left-1/2 z-[65] flex w-[min(460px,calc(100vw-40px))] -translate-x-1/2 items-center gap-3 rounded-2xl !bg-[rgb(14_11_32/0.92)] p-4"
+          className="glass-solid hud-corners fixed bottom-16 left-1/2 z-[65] flex w-[min(460px,calc(100vw-40px))] -translate-x-1/2 items-center gap-3 rounded-2xl p-4"
         >
           <SunCore size={44} phase={phase === 'night' ? 'night' : 'dusk'} minimal />
           <div className="min-w-0 flex-1">

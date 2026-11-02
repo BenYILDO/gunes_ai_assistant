@@ -149,7 +149,7 @@ export function ChatPanel({ open, phase, userName, onClose, onActivity, focusSes
             onClick={onClose}
           />
           <motion.aside
-            className="glass fixed bottom-3 right-3 top-[86px] z-40 flex w-[min(470px,calc(100vw-24px))] flex-col overflow-hidden rounded-2xl !bg-[rgb(12_10_30/0.86)]"
+            className="glass-solid fixed bottom-3 right-3 top-[86px] z-40 flex w-[min(470px,calc(100vw-24px))] flex-col overflow-hidden rounded-2xl"
             initial={{ x: '110%', opacity: 0.5 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: '110%', opacity: 0.5 }}

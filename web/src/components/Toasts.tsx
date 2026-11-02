@@ -25,7 +25,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               initial={{ opacity: 0, y: 20, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 10, scale: 0.95 }}
-              className="glass flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm"
+              className="glass-solid flex max-w-[min(720px,calc(100vw-32px))] items-center gap-2 rounded-xl px-4 py-2.5 text-sm text-ink"
             >
               {t.kind === 'ok' ? <CheckCircle2 size={16} className="text-ok" /> : <AlertCircle size={16} className="text-danger" />}
               {t.text}

@@ -50,7 +50,7 @@ export function NudgePopup({
             animate={{ opacity: 1, x: 0, scale: 1, filter: 'blur(0px)' }}
             exit={{ opacity: 0, x: 80, scale: 0.95, transition: { duration: 0.25 } }}
             transition={{ type: 'spring', stiffness: 260, damping: 24 }}
-            className="glass hud-corners pointer-events-auto relative overflow-hidden rounded-2xl !bg-[rgb(14_11_32/0.9)] p-4"
+            className="glass-solid hud-corners pointer-events-auto relative overflow-hidden rounded-2xl p-4"
           >
             {/* Işık süpürmesi */}
             <motion.div
