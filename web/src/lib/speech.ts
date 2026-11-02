@@ -100,11 +100,13 @@ function whenVoices(fn: () => void) {
 let speakingText = '';
 /** Şu an okunan metin (mikrofonun Güneş'in kendi sesini komut sanmaması için) */
 export const currentSpeech = () => speakingText;
-export const isSpeaking = () => 'speechSynthesis' in window && window.speechSynthesis.speaking;
+export const isSpeaking = () => Boolean(currentAudio) || ('speechSynthesis' in window && window.speechSynthesis.speaking);
 
 export function cancelSpeech() {
   token++;
   speakingText = '';
+  currentAudio?.pause();
+  currentAudio = null;
   if ('speechSynthesis' in window) window.speechSynthesis.cancel();
   speakHooks.forEach((h) => h(false));
 }
@@ -119,6 +121,43 @@ export function onSpeaking(h: (speaking: boolean) => void) {
 }
 
 let token = 0;
+
+// ---------- Doğal ses (Azure Speech, sunucu üzerinden)
+let provider: 'azure' | 'browser' = 'browser';
+export const setTtsProvider = (p: 'azure' | 'browser') => {
+  provider = p;
+};
+export const ttsProvider = () => provider;
+let currentAudio: HTMLAudioElement | null = null;
+
+/** Sunucudan Emel sesini alıp çalar. Başarısızsa false döner (tarayıcı sesine düşülür). */
+async function playNatural(text: string, my: number): Promise<boolean> {
+  try {
+    const res = await fetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
+    if (!res.ok) return false;
+    const url = URL.createObjectURL(await res.blob());
+    if (my !== token) return true; // bu arada iptal edildi
+    return await new Promise<boolean>((resolve) => {
+      const a = new Audio(url);
+      currentAudio = a;
+      a.volume = 1;
+      const fin = (ok: boolean) => {
+        URL.revokeObjectURL(url);
+        if (currentAudio === a) currentAudio = null;
+        resolve(ok);
+      };
+      a.onplaying = () => {
+        lastStartAt = Date.now();
+      };
+      a.onended = () => fin(true);
+      a.onpause = () => fin(true); // iptal
+      a.onerror = () => fin(false);
+      a.play().catch(() => fin(false));
+    });
+  } catch {
+    return false;
+  }
+}
 let lastStartAt = 0;
 let lastError = '';
 
@@ -191,6 +230,14 @@ export function speakAsync(text: string, opts: { rate?: number; pitch?: number; 
       speakingText = text;
       speakHooks.forEach((h) => h(true));
       await new Promise((r) => setTimeout(r, 150)); // mikrofon dursun
+      // Doğal ses varsa önce onu dene (tüm metin tek seferde: daha doğal tonlama)
+      if (provider === 'azure' && (await playNatural(text, my))) {
+        if (my === token) {
+          speakingText = '';
+          speakHooks.forEach((h) => h(false));
+        }
+        return resolve();
+      }
       const parts = text.match(/[^.!?…]+[.!?…]*/g)?.map((p) => p.trim()).filter(Boolean) ?? [text];
       for (const p of parts) {
         if (my !== token) break; // yeni bir konuşma başladı / iptal edildi
@@ -215,7 +262,7 @@ export async function voiceTest(name: string) {
   if (!('speechSynthesis' in window)) return { ok: false, voice: null as string | null, turkish: [] as string[] };
   await new Promise<void>((r) => whenVoices(r));
   const turkish = window.speechSynthesis.getVoices().filter((v) => v.lang.toLowerCase().startsWith('tr')).map((v) => v.name);
-  const voice = pickVoice()?.name ?? null;
+  const voice = provider === 'azure' ? 'Emel (Azure doğal ses)' : (pickVoice()?.name ?? null);
   const t0 = Date.now();
   lastError = '';
   void speakAsync(`Merhaba ${name}, sesimi duyuyor musunuz? Ben Güneş.`, { force: true });

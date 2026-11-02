@@ -74,6 +74,20 @@ Bu komut Claude CLI'ı, Supabase'i, Güneş MCP aracını ve Microsoft 365 conne
 ### 4. İlk çalışma
 Masaüstündeki **Güneş** kısayoluna tıklayın, sonra panodaki **"Geçmişi tara"** butonuna basın. Güneş son 45 günü 7 günlük parçalar halinde tarayıp panoyu ve hafızasını kurar. Bu işlem ilk seferde uzun sürer ve Pro limitinizden yer; gerekirse `GUNES_BACKFILL_DAYS` değerini düşürebilirsiniz.
 
+### 5. (İsteğe bağlı) Doğal kadın sesi: Azure Speech ücretsiz katmanı
+Şirket ağı Edge'in bulut seslerini (Emel/Ahmet Online) engelliyorsa Güneş yerel **Tolga** sesine düşer; bu ses yapay ve erkek sesidir. Doğal **Emel** sesi için Microsoft'un resmi servisinin ücretsiz katmanını kullanın: ayda 500 bin karakter, Güneş'in kullanımı ayda ~30–45 bin.
+1. [portal.azure.com](https://portal.azure.com) → **Kaynak oluştur** → **Speech** (Konuşma hizmeti).
+2. Bölge: **West Europe**, Fiyatlandırma katmanı: **Free F0**.
+3. Oluşunca **Keys and Endpoint** sayfasından **KEY 1** ve **Location/Region** değerlerini alın.
+4. `.env` dosyasına yazın (sohbete yapıştırmayın):
+   ```
+   AZURE_SPEECH_KEY=...
+   AZURE_SPEECH_REGION=westeurope
+   ```
+5. Sunucuyu yeniden başlatın ve `npm run doctor` ile kontrol edin: "Doğal ses … çalışıyor" görmelisiniz.
+
+Güneş kotayı kendisi sayar; ayda 450 bin karakterde tarayıcı sesine döner ve ücret oluşmaz. Aynı metinler önbellekten çalınır.
+
 ## Günlük kullanım
 
 | Ne zaman | Ne olur |

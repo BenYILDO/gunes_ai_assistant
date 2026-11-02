@@ -21,7 +21,7 @@ import { EndOfDayPrompt } from './components/EndOfDayPrompt';
 import { VoiceBriefing } from './components/VoiceBriefing';
 import { buildScript, type Segment, type SegmentAction } from './lib/voiceScript';
 import { listener, micPreference } from './lib/listener';
-import { currentSpeech, voiceTest } from './lib/speech';
+import { currentSpeech, setTtsProvider, voiceTest } from './lib/speech';
 import { runVoiceDiag } from './lib/voiceDiag';
 import { isEcho, parseIntent, stripWake } from './lib/voiceCommands';
 import { NudgePopup } from './components/NudgePopup';
@@ -121,6 +121,9 @@ export default function App() {
 
   const status = usePoll(api.status, 4000);
   const running = status.data?.run.running ?? null;
+  useEffect(() => {
+    if (status.data?.tts) setTtsProvider(status.data.tts.provider);
+  }, [status.data?.tts?.provider]);
   const board = usePoll(() => api.board(), 15000);
   const briefing = usePoll(api.briefing, 30000);
   const suggestions = usePoll(api.suggestions, 30000);

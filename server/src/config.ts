@@ -53,6 +53,15 @@ export const config = {
   /** 5 saatlik kullanım bu oranı geçerse 2 saatlik takip ertelenir (sohbete yer kalsın) */
   usagePauseAt: Number(env('GUNES_USAGE_PAUSE_AT', '0.85')),
 
+  /** Doğal ses (Azure Speech F0, ücretsiz): portal.azure.com → Speech service → Keys and Endpoint */
+  azureSpeechKey: env('AZURE_SPEECH_KEY'),
+  azureSpeechRegion: env('AZURE_SPEECH_REGION', 'westeurope'),
+  ttsVoice: env('GUNES_TTS_VOICE', 'tr-TR-EmelNeural'),
+  ttsRate: env('GUNES_TTS_RATE', '-3%'),
+  ttsPitch: env('GUNES_TTS_PITCH', '+2%'),
+  /** Ücretsiz kota 500 bin; güvenlik payıyla bu sınırda tarayıcı sesine dönülür */
+  ttsMonthlyLimit: Number(env('GUNES_TTS_MONTHLY_LIMIT', '450000')),
+
   vipPeople: list('GUNES_VIP_PEOPLE'),
   ignoreSenders: list('GUNES_IGNORE', 'noreply,no-reply,newsletter,bulten,notification,bildirim'),
 };

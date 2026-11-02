@@ -11,6 +11,7 @@ import { CARD_STATUSES, getStore, MEMORY_KINDS, PRIORITIES, type Card, type Memo
 import { localDate } from './scheduler.js';
 import { getWeather, setLocation } from './weather.js';
 import { listUnseen, markPresence, markSeen } from './nudges.js';
+import { synthesize, TtsError, ttsEnabled, ttsUsage } from './tts.js';
 import { briefingFollowup, closeAppWindow, daySummary, endDay } from './day.js';
 
 const wrap =
@@ -73,6 +74,7 @@ export function apiRouter() {
         run: runState,
         schedule: await nextRuns(),
         usage: await getUsage(),
+        tts: { provider: ttsEnabled() ? 'azure' : 'browser', voice: config.ttsVoice, usage: ttsEnabled() ? await ttsUsage() : null },
         labels: { status: STATUS_TR, stats: STAT_TR },
       });
     }),
@@ -117,6 +119,17 @@ export function apiRouter() {
       });
     }),
   );
+
+  // ---------- Doğal ses (Azure Speech)
+  r.post('/tts', async (req, res) => {
+    try {
+      const audio = await synthesize(String(req.body?.text ?? ''));
+      res.set({ 'Content-Type': 'audio/mpeg', 'Cache-Control': 'no-store' }).send(audio);
+    } catch (e) {
+      const err = e as TtsError;
+      res.status(err.status ?? 500).json({ error: err.message });
+    }
+  });
 
   // ---------- Ses tanılama raporu (data/diag-voice.json)
   r.post('/diag/voice', (req, res) => {

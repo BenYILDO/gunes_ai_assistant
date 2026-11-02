@@ -66,6 +66,17 @@ if (hasSupabase) {
 existsSync(join(ROOT, 'server', 'dist', 'mcp.js')) ? okMark('Sunucu derlenmiş') : (bad('Sunucu derlenmemiş: npm run build'), problems++);
 existsSync(join(ROOT, 'web', 'dist', 'index.html')) ? okMark('Arayüz derlenmiş') : (bad('Arayüz derlenmemiş: npm run build'), problems++);
 
+if (config.azureSpeechKey) {
+  try {
+    const { synthesize } = await import('./tts.js');
+    const audio = await synthesize('Merhaba, ben Güneş.');
+    okMark(`Doğal ses (Azure Speech, ${config.ttsVoice}): çalışıyor (${Math.round(audio.length / 1024)} KB)`);
+  } catch (e) {
+    bad(`Doğal ses (Azure Speech): ${(e as Error).message}`);
+    problems++;
+  }
+} else warn('Doğal ses ayarlı değil (AZURE_SPEECH_KEY) — tarayıcı sesi kullanılacak');
+
 if (process.argv.includes('--live')) {
   console.log('\n  Canlı test: Claude (Haiku) ile Microsoft 365 connector deneniyor…');
   let tools: string[] = [];
