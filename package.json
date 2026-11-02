@@ -1,0 +1,53 @@
+{
+  "name": "gunes-ai-assistant",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Güneş — Outlook ve Teams'i takip eden, kanban yöneten, hafızalı kişisel asistan",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:server": "tsx watch server/src/index.ts",
+    "dev:web": "vite --config web/vite.config.ts",
+    "build": "npm run build:server && npm run build:web",
+    "build:server": "tsc -p server/tsconfig.json",
+    "build:web": "vite build --config web/vite.config.ts",
+    "start": "node server/dist/index.js",
+    "doctor": "node server/dist/doctor.js",
+    "run:morning": "node server/dist/cli.js morning",
+    "run:tracker": "node server/dist/cli.js tracker",
+    "run:backfill": "node server/dist/cli.js backfill",
+    "typecheck": "tsc -p server/tsconfig.json --noEmit && tsc -p web/tsconfig.json --noEmit",
+    "demo": "node server/dist/demo.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@supabase/supabase-js": "^2.118.0",
+    "dotenv": "^18.0.9",
+    "express": "^5.3.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@fontsource-variable/inter": "^5.3.0",
+    "@fontsource-variable/sora": "^5.3.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.2.0",
+    "lucide-react": "^1.66.0",
+    "motion": "^14.9.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.5"
+  }
+}
