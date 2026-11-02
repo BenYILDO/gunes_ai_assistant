@@ -1,6 +1,17 @@
 export type Phase = 'dawn' | 'day' | 'dusk' | 'night';
 
-export function phaseOf(d = new Date()): Phase {
+/** Gerçek gün doğumu/batımı biliniyorsa ona göre, yoksa saate göre evre. */
+export function phaseOf(d = new Date(), sun?: { sunrise: string | null; sunset: string | null }): Phase {
+  if (sun?.sunrise && sun?.sunset) {
+    const t = d.getTime();
+    const rise = new Date(sun.sunrise).getTime();
+    const set = new Date(sun.sunset).getTime();
+    const H = 3600_000;
+    if (t >= rise - H && t < rise + 2.5 * H) return 'dawn';
+    if (t >= rise + 2.5 * H && t < set - 1.5 * H) return 'day';
+    if (t >= set - 1.5 * H && t < set + H) return 'dusk';
+    return 'night';
+  }
   const h = d.getHours() + d.getMinutes() / 60;
   if (h >= 5 && h < 10.5) return 'dawn';
   if (h >= 10.5 && h < 16.5) return 'day';

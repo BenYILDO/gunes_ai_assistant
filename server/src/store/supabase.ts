@@ -10,6 +10,8 @@ import type {
   JournalEntry,
   Memory,
   PendingAction,
+  ThreadLink,
+  WikiPage,
   MemoryKind,
   NewCard,
   NewEvent,
@@ -120,7 +122,7 @@ export class SupabaseStore implements Store {
   async getPendingAction(id: string) {
     return must(await this.db.from('pending_actions').select('*').eq('id', id).maybeSingle(), 'pending action') as PendingAction | null;
   }
-  async createPendingAction(a: Pick<PendingAction, 'action' | 'target_id' | 'title' | 'reason'>) {
+  async createPendingAction(a: Pick<PendingAction, 'action' | 'target_id' | 'title' | 'reason'> & { payload?: Record<string, unknown> }) {
     return must(await this.db.from('pending_actions').insert(a).select().single(), 'pending action insert') as PendingAction;
   }
   async resolvePendingAction(id: string, status: 'approved' | 'rejected') {
@@ -238,5 +240,36 @@ export class SupabaseStore implements Store {
   }
   async addChatMessage(m: Omit<ChatMessage, 'id' | 'created_at'>) {
     return must(await this.db.from('chat_messages').insert(m).select().single(), 'chat message insert') as ChatMessage;
+  }
+
+  async searchChatMessages(query: string, limit = 30) {
+    const rows = must(
+      await this.db
+        .from('chat_messages')
+        .select('*, chat_sessions(title)')
+        .ilike('content', `%${query.replace(/[%_]/g, '')}%`)
+        .order('created_at', { ascending: false })
+        .limit(limit),
+      'chat search',
+    ) as (ChatMessage & { chat_sessions: { title: string } | null })[];
+    return rows.map(({ chat_sessions, ...m }) => ({ ...m, session_title: chat_sessions?.title ?? '' }));
+  }
+
+  async listWikiPages() {
+    return must(await this.db.from('wiki_pages').select('*').order('kind').order('title'), 'wiki list') as WikiPage[];
+  }
+  async getWikiPage(slug: string) {
+    return must(await this.db.from('wiki_pages').select('*').eq('slug', slug).maybeSingle(), 'wiki page') as WikiPage | null;
+  }
+  async upsertWikiPage(p: Pick<WikiPage, 'slug' | 'title' | 'kind' | 'summary' | 'content' | 'links' | 'sources'>) {
+    return must(await this.db.from('wiki_pages').upsert(p, { onConflict: 'slug' }).select().single(), 'wiki upsert') as WikiPage;
+  }
+
+  async getThreadLinks(threadIds: string[]) {
+    if (!threadIds.length) return [];
+    return must(await this.db.from('thread_links').select('*').in('thread_id', threadIds), 'thread links') as ThreadLink[];
+  }
+  async upsertThreadLink(l: Omit<ThreadLink, 'created_at'>) {
+    must(await this.db.from('thread_links').upsert(l, { onConflict: 'thread_id' }), 'thread link upsert');
   }
 }

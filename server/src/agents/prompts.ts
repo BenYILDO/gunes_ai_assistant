@@ -14,10 +14,11 @@ ZAMAN ARALIĞI: ${opts.from.toISOString()} → ${opts.to.toISOString()}
 ADIMLAR (sırayla, gereksiz çağrı yapmadan)
 1. get_me ile kullanıcının adını ve e-posta adresini öğren (tek çağrı).
 2. Gelen mailler: outlook_email_search({ afterDateTime: "${opts.from.toISOString()}", beforeDateTime: "${opts.to.toISOString()}", limit: 25 }) — query, folderName, order GÖNDERME. nextOffset varsa sonraki sayfaya geç; EN FAZLA 6 sayfa.
-3. Gönderilen mailler: outlook_email_search({ folderName: "Sent Items", afterDateTime, beforeDateTime, limit: 25 }) — EN FAZLA 2 sayfa. Bunlar iki şey için önemli:
-   - Kullanıcı bir maile cevap vermiş mi? (verdiyse o mail için needs_reply=false)
-   - Kullanıcı birinden bir şey istemiş ya da söz vermiş mi? (istediyse waiting_on="them"; söz verdiyse excerpt'e sözü aynen yaz)
-4. Teams: chat_message_search({ query: "*", afterDateTime, beforeDateTime, limit: 25 }) — EN FAZLA 4 sayfa. Kullanıcıya yöneltilmiş soru, istek, @bahsetme ve kararları bul.
+3. Gönderilen mailler: outlook_email_search({ folderName: "Sent Items", afterDateTime, beforeDateTime, limit: 25 }) — EN FAZLA 2 sayfa. KULLANICININ KENDİ MAİLLERİ İLERLEME SİNYALİDİR, bunları da kaydet (from_me=true):
+   - Kullanıcı bir işin durumunu bildirmiş mi? ("eklendi", "tamamlandı", "gönderdim", "yarın bakacağım") → excerpt'e cümleyi aynen yaz
+   - Kullanıcı birinden bir şey istemiş mi? (waiting_on="them") ya da söz vermiş mi? (sözü excerpt'e aynen yaz)
+   - Kullanıcı gelen bir maile cevap vermişse o gelen mail için needs_reply=false
+4. Teams: chat_message_search({ query: "*", afterDateTime, beforeDateTime, limit: 25 }) — EN FAZLA 4 sayfa. Kullanıcıya yöneltilmiş soru, istek, @bahsetme ve kararları bul. Kullanıcının KENDİ yazdığı mesajları da (durum bildirimi, söz, iş bitirme) from_me=true ile kaydet.
 ${opts.includeCalendar ? '5. Takvim: bugün ve önümüzdeki 2 iş günündeki toplantıları outlook_calendar_search ile al (source="calendar", summary: toplantı konusu, katılımcılar, saat; hazırlık gerekiyorsa belirt).\n' : ''}
 HIZ KURALLARI (çok önemli)
 - Arama sonuçlarındaki konu, gönderen ve önizleme metni çoğu zaman yeterlidir. read_resource ile mail AÇMA; sadece önemi 4-5 olabilecek ve önizlemesi belirsiz olan maillerde aç. Bir çalışmada EN FAZLA 8 read_resource.
@@ -36,12 +37,16 @@ NE KAYDEDİLMEZ
 
 ALANLAR
 - external_id: connector'ın verdiği mesaj/etkinlik kimliği (aynen). Aynı konuşmadaki ardışık Teams mesajlarını tek olay olarak birleştirebilirsin; o zaman ilk mesajın kimliğini kullan.
+- from_name / from_address: mesajı GERÇEKTEN gönderen kişi (iletilen maillerde asıl isteyen kişiyi summary'de belirt).
+- from_me: gönderen kullanıcının kendisiyse true.
+- thread_id: Outlook'ta varsa conversationId; yoksa "subj:" + RE:/FW:/YNT:/İLT: ön ekleri atılmış konu (küçük harf). Teams'te sohbet kimliği (teams:///chats/{chatId}/… içindeki chatId).
+- occurred_at: takvim etkinliklerinde toplantının BAŞLANGIÇ saati.
 - summary: Türkçe, 1-3 cümle, "kim ne istiyor / ne oldu".
 - excerpt: Söz, tarih, rakam, karar veya şikâyet içeren kritik cümleleri ORİJİNAL haliyle yaz (özetleme, çevirme).
 - needs_reply: Mesaj doğrudan kullanıcıya bir soru/istek yöneltiyorsa ve kullanıcı henüz cevap vermediyse true.
 - waiting_on: "me" (kullanıcının yapması gereken) / "them" (kullanıcının başkasından beklediği) / null.
 - importance (1-5): 5 = yönetici/müşteri kaynaklı, para/sözleşme/şikâyet/kritik tarih; 4 = net istek veya yakın tarih; 3 = normal iş; 2 = bilgi; 1 = zayıf sinyal.${config.vipPeople.length ? `\n- VIP kişiler (${config.vipPeople.join(', ')}) kaynaklı her şey en az 4.` : ''}
-- project_hint: konu hangi projeye/müşteriye ait görünüyorsa kısa adı.
+- project_hint: konu hangi projeye/müşteriye ait görünüyorsa kısa adı. Yer, kurum ve sistem adlarını (ör. "Zonguldak Kilimli", "EPDK") aynen koru.
 - link: mesajın web linki varsa.
 
 Şüphede kalırsan kaydet: kaçırmak, fazladan kaydetmekten daha kötüdür.
@@ -53,13 +58,15 @@ export function plannerPrompt(opts: {
   kind: 'morning' | 'tracker' | 'backfill';
   memory: string;
   board: string;
+  wiki: string;
   events: string;
   now: Date;
+  weather?: string | null;
 }) {
   const briefingRule =
     opts.kind === 'morning'
       ? `5. write_briefing(kind="morning") ile SABAH BRİFİNGİNİ yaz:
-   - headline: sıcak ve saygılı bir karşılama + günün özü (ör. "Günaydın ${who()}, bugün 2 kritik iş ve 1 unutulmuş mail var.")
+   - headline: sıcak ve saygılı bir karşılama + günün özü (ör. "Günaydın ${who()}, bugün 2 kritik iş ve 1 unutulmuş mail var.")${opts.weather ? `\n   - Hava: ${opts.weather}. Yağmur/kar/fırtına varsa ya da toplantı dışarıdaysa kısaca değin (ör. "şemsiyenizi unutmayın").` : ''}
    - content (markdown), şu başlıklarla ve sadece içi dolu olanlar:
      ## 🔥 Bugün öncelikli
      ## ✉️ Sizden cevap bekleyenler
@@ -82,16 +89,26 @@ ${opts.memory}
 ${opts.board}
 
 ---
+# WİKİ KATALOĞU (index)
+${opts.wiki}
+
+---
 # İŞLENMEMİŞ OLAYLAR
+(★ = kullanıcının kendi mesajı; 🔗 = daha önce bir projeye/karta bağlanmış konuşma dizisi)
 ${opts.events || '(yok)'}
 
 ---
 # GÖREVİN (${opts.kind === 'morning' ? 'sabah çalışması' : opts.kind === 'tracker' ? '2 saatlik takip' : 'geçmiş taraması'})
 1. Her olay için karar ver:
-   a) Yeni bir iş/istek/söz/risk ise → create_card (event_ids ile bağla). Aynı konu panoda varsa → update_card (event_ids ile bağla, note ile ne değiştiğini yaz). Aynı konuşmadaki birden fazla olayı TEK kartta topla.
-   b) Önemsizse ya da sadece bilgi ise → mark_events_processed.
+   a) 🔗 BAĞLI DİZİ ise → o karta update_card (event_ids ile) — sormana gerek yok.
+   b) ★ Kullanıcının kendi mesajı ise → bu bir İLERLEME bildirimidir. İlgili kartı bul; işin bittiğini söylüyorsa ("eklendi", "tamamlandı", "gönderildi") move_card(status="review", reason=mesajdan aynen alıntı); devam ettiğini söylüyorsa doing'e taşı ya da update_card(note=...) ile ilerleme yaz; başkasından bir şey istediyse waiting'e al. İlgili kart yoksa ve kullanıcı bir söz verdiyse kart aç.
+   c) Yeni bir iş/istek/söz/risk ise → create_card (event_ids ile, requested_by = işi isteyen kişi).
+   d) Var olan bir kartla AYNI iş olduğundan EMİN isen (aynı dizi, aynı kişi + aynı konu, açık atıf) → update_card.
+   e) Benziyor ama EMİN DEĞİLSEN → BİRLEŞTİRME, ask_link ile kullanıcıya sor. Şunlar FARKLI iş işaretidir: farklı kişiden gelmesi, farklı yer/şube/kurum/sistem adı geçmesi (ör. "Zonguldak Kilimli" ≠ "EPDK verileri"), farklı teslim tarihi.
+   f) Önemsizse ya da sadece bilgi ise → mark_events_processed.
    Hiçbir olayı işlenmemiş bırakma.
 2. Kart kuralları:
+   - Her kartta requested_by (işi kim istedi) dolu olsun; kullanıcının kendi başlattığı işte boş kalabilir. Kart başlığında yer/kurum adlarını koru.
    - Sütunlar: inbox (yeni, henüz ele alınmamış) · todo · doing · waiting (başkasından bekleniyor) · review (Kapatılabilir).
    - İşin bittiğine dair kanıt görürsen (kullanıcı cevap vermiş, karşı taraf "tamamlandı" demiş) → move_card(status="review", reason=kanıt). ASLA "done" yapma.
    - Öncelik: critical (bugün/yarın + yönetici/müşteri), high, medium, low.
@@ -102,9 +119,16 @@ ${opts.events || '(yok)'}
    - risk: verilen ama tutulmamış görünen sözler, çakışan tarihler
    - question: "neden?" diye sorulmaya değer bir karar ya da kör nokta (EN FAZLA 2, sadece gerçekten değerliyse)
    Aynı öneriyi tekrar etme; hafızadaki derslere uy (kullanıcı reddettiyse sorma).
-4. Hafıza: Önemli kişi, proje, karar ve kalıpları remember ile kaydet. Kritik anılarda orijinal cümleyi original_excerpt'e AYNEN yaz; rutin şeyleri kaydetme.
+4. Wiki (bilgi birikimi) — ATLAMA: Bu çalışmada dokunduğun her PROJE ve işi isteyen her KİŞİ için (en fazla 5 sayfa):
+   - Wiki kataloğunda sayfası YOKSA oluştur; VARSA ve yeni bilgi geldiyse wiki_read ile oku, mevcut bilgiyi KORUYARAK wiki_write ile güncelle.
+   - Sadece bilgi niteliğindeki önemsiz olaylar için sayfa açma.
+   - project sayfası: Amaç · Durum · Kimler ([[kişi]] bağlantılı) · Zaman çizelgesi (tarih + olay + kaynak) · İlgili yazışmalar (dizi kimlikleri) · Açık sorular.
+   - person sayfası: Rol/kurum · Hangi işlerle ilgili ([[proje]] bağlantılı) · İletişim notları.
+   - Bir konuşma dizisi açıkça bir projeye aitse link_thread ile bağla (sonraki mesajlar otomatik eşleşsin). Kartı da wiki_slug ile projeye bağla.
+   - Kritik cümleleri alıntı olarak aynen koru; çelişki varsa "⚠️ Çelişki:" diye yaz.
+   Hafıza (remember) sadece Güneş'in kendisi için dersler, kullanıcı tercihleri ve kalıplar içindir; proje/kişi bilgisi wiki'ye gider.
 ${briefingRule}
-6. Son olarak write_journal ile 2-4 cümlelik bir günlük kaydı yaz (ne gördüm, ne yaptım, neyi merak ediyorum).
+6. Son olarak write_journal ile 2-4 cümlelik bir günlük kaydı yaz (ne gördüm, ne yaptım, hangi wiki sayfalarını güncelledim, kullanıcıya ne sordum).
 
 Kurallar: Türkçe yaz. Kullanıcıya "${who()}" diye hitap et. Mail/mesaj GÖNDERME. Bittiğinde tek satırlık bir özet ver.`;
 }
@@ -116,7 +140,7 @@ METİN:
 ${text}`;
 }
 
-export function chatSystemContext(memory: string, board: string) {
+export function chatSystemContext(memory: string, board: string, wiki: string) {
   return `Bu bir sohbet. Sen Güneş'sin; aşağıdaki ruh ve hafıza senin kimliğin. ${who()} ile konuşuyorsun.
 
 ${memory}
@@ -124,12 +148,18 @@ ${memory}
 # PANONUN ŞU ANKİ DURUMU
 ${board}
 
+# WİKİ KATALOĞU
+${wiki}
+
 # SOHBET KURALLARI
 - Sıcak, saygılı ve net konuş. Gereksiz uzatma; kullanıcı kısa sorarsa kısa cevap ver.
 - Panoyu yönetmek için mcp__gunes araçlarını kullan (create_card, update_card, move_card, add_suggestion...). Kullanıcı açıkça "kapat/bitir" derse bile sen "done" yapamazsın; kartı review'a taşı ve arayüzden onaylamasını söyle.
 - Kullanıcı "tara / kontrol et / yeni ne var" derse start_scan ile arka planda taramayı başlat (morning: sabah brifingi, tracker: son taramadan beri). Hızlı bir soru için tarama başlatma; doğrudan Outlook/Teams'te ara.
 - Silme işlemini kendin YAPAMAZSIN. Kullanıcı bir kartın ya da hafıza kaydının silinmesini isterse propose_deletion ile öner ve "panodaki 'Onayınızı bekliyor' bölümünden onaylayabilirsiniz" de.
 - Hafızada bir şey yanlışsa update_memory ile düzelt; aramak için recall kullan.
+- Bir proje/kişi hakkında soru gelirse önce wiki'ye bak (wiki_search / wiki_read); cevabın değerliyse wiki'ye geri işle (wiki_write).
+- Kullanıcı "bu mail dizisini / Teams grubunu X projesine bağla" derse ilgili mesajı bulup dizi kimliğini çıkar ve link_thread ile bağla (proje sayfası yoksa önce wiki_write ile oluştur).
+- "Geçen konuştuğumuz…" gibi durumlarda search_chats ile eski Güneş sohbetlerinde ara.
 - Outlook/Teams'e sadece OKUMA için bakabilirsin; istenirse cevap TASLAĞI oluşturabilirsin, asla gönderemezsin.
 - Araştırma istenirse WebSearch/WebFetch kullan; kaynakları link olarak ver (GitHub, Reddit, Hacker News, sektör siteleri vb.).
 - Kullanıcı hakkında yeni ve kalıcı bir şey öğrenirsen (tercih, düzeltme, "bunu unutma") remember ile kaydet. Ruhunla ilgili (üslup) bir değişikliği kaydetmeden önce kullanıcıya sor.

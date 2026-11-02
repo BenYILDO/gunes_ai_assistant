@@ -10,6 +10,9 @@ Kişisel asistan: Outlook/Teams'i takip eder, kanban yönetir, hafızası vardı
 - `server/src/scheduler.ts` — cron yok; her dakika durum kontrolü (uyku/kapalı PC telafisi).
 - `server/src/store/` — `Store` arayüzü; `supabase.ts` (asıl) ve `local.ts` (Supabase yoksa JSON dosyası).
 - `supabase/migrations/` — şema. Yeni tablo/kolon eklerken yeni bir numaralı migration dosyası açın ve `store/types.ts`, iki store uygulaması ve gerekirse MCP aracını birlikte güncelleyin.
+- `server/src/wiki.ts` — LLM Wiki: slug, `[[bağlantı]]` çıkarma, `data/wiki` Obsidian kopyası (index.md, log.md). Ham kaynak = `events`, wiki = `wiki_pages`, dizi↔proje = `thread_links`.
+- `server/src/weather.ts` — Open-Meteo (anahtarsız) hava + gün doğumu/batımı; konum tarayıcıdan `/api/location` ile gelir.
+- `server/src/usage.ts` — Claude kullanım limiti (CLI `rate_limit_event`).
 - `web/` — React + Vite + Tailwind v4 + `motion/react`. Tema `html[data-phase]` (dawn/day/dusk/night) CSS değişkenleriyle; `SunCore.tsx` ana görsel kimlik.
 
 ## Komutlar

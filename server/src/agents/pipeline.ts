@@ -1,9 +1,11 @@
 import { config } from '../config.js';
 import { usageIsHigh } from '../usage.js';
+import { getWeather } from '../weather.js';
 import { runClaude, type RunnerEvent } from '../claude/runner.js';
-import { getStore, type EventItem } from '../store/index.js';
+import { getStore } from '../store/index.js';
 import { collectorPrompt, notifierPrompt, plannerPrompt } from './prompts.js';
-import { buildBoardContext, buildMemoryContext, ensureSoul } from './soul.js';
+import { buildBoardContext, buildMemoryContext, buildWikiIndex, ensureSoul, formatEvents } from './soul.js';
+import { exportWiki } from '../wiki.js';
 
 export type JobKind = 'morning' | 'tracker' | 'backfill';
 
@@ -40,6 +42,10 @@ const toolLabel = (name: string) => {
     remember: 'Hafızasına yazıyor',
     write_journal: 'Günlüğünü yazıyor',
     mark_events_processed: 'Olayları işliyor',
+    ask_link: 'Size soru bırakıyor',
+    link_thread: 'Yazışmayı projeye bağlıyor',
+    wiki_read: 'Wiki sayfasını okuyor',
+    wiki_write: 'Wiki\'yi güncelliyor',
   };
   return map[t] ?? t;
 };
@@ -52,6 +58,11 @@ const onEvent = (e: RunnerEvent) => {
 };
 
 const store = getStore();
+
+async function weatherLine() {
+  const w = await getWeather().catch(() => null);
+  return w ? `${w.place ?? 'Konumunuz'}: ${w.label}, ${w.temp}°C (en yüksek ${w.todayMax ?? '?'}°, yağış ihtimali %${w.rainChance ?? '?'})` : null;
+}
 
 const trDay = (d: Date) => d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
 const secs = (t0: number) => `${Math.round((Date.now() - t0) / 1000)} sn`;
@@ -74,12 +85,6 @@ async function collect(from: Date, to: Date, includeCalendar: boolean, label = '
   return res;
 }
 
-const fmtEvent = (e: EventItem) =>
-  `[${e.id.slice(0, 8)}] ${e.occurred_at.slice(0, 16)} · ${e.source} · ${e.from_name ?? '?'}${e.from_address ? ` <${e.from_address}>` : ''} · ${e.subject ?? ''}\n` +
-  `  ${e.summary}` +
-  (e.excerpt ? `\n  > ${e.excerpt}` : '') +
-  `\n  önem:${e.importance}${e.needs_reply ? ' · CEVAP BEKLİYOR' : ''}${e.waiting_on ? ` · bekleyen:${e.waiting_on}` : ''}${e.due_date ? ` · tarih:${e.due_date}` : ''}${e.project_hint ? ` · proje?:${e.project_hint}` : ''}${e.link ? ` · link:${e.link}` : ''} · ext:${e.external_id}`;
-
 async function plan(kind: JobKind) {
   // Büyük birikimlerde planlayıcı birkaç tur çalışır (her turda en fazla 120 olay).
   for (let round = 0; round < 6; round++) {
@@ -94,7 +99,9 @@ async function plan(kind: JobKind) {
         kind: kind === 'morning' && !lastRound ? 'backfill' : kind,
         memory: await buildMemoryContext(store),
         board: await buildBoardContext(store),
-        events: events.map(fmtEvent).join('\n'),
+        wiki: await buildWikiIndex(store),
+        events: await formatEvents(store, events),
+        weather: kind === 'morning' ? await weatherLine() : null,
         now: new Date(),
       }),
       model: config.modelThink,
@@ -233,6 +240,7 @@ async function execute(kind: JobKind) {
     await store.finishRun(run.id, { status: 'error', error: message });
     runState.lastResult = { kind, status: 'error', at: new Date().toISOString(), message };
   } finally {
+    await exportWiki(store);
     runState.running = null;
     runState.step = '';
   }

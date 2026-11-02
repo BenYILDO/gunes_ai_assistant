@@ -237,3 +237,34 @@ body {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+
+/* Hava: kapalı/yağışlı havada renkler solar */
+html[data-weather='overcast'] .sky,
+html[data-weather='rain'] .sky,
+html[data-weather='storm'] .sky {
+  filter: saturate(0.72) brightness(0.92);
+  transition: filter 2.5s ease;
+}
+html[data-weather='fog'] .sky,
+html[data-weather='drizzle'] .sky,
+html[data-weather='snow'] .sky {
+  filter: saturate(0.85);
+  transition: filter 2.5s ease;
+}
+
+.md a.wiki-link {
+  border-bottom: none;
+  background: rgb(var(--glow) / 0.12);
+  padding: 0 0.3em;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.md a.wiki-link:hover { background: rgb(var(--glow) / 0.24); }
+
+/* Yağışlı havada paneller biraz daha koyu: parçacıklar okumayı bozmasın */
+html[data-weather='rain'] .glass,
+html[data-weather='storm'] .glass,
+html[data-weather='snow'] .glass,
+html[data-weather='drizzle'] .glass {
+  background: linear-gradient(180deg, rgb(16 14 34 / 0.62), rgb(12 10 28 / 0.55));
+}

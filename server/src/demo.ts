@@ -4,6 +4,7 @@
  */
 import { ensureSoul } from './agents/soul.js';
 import { getStore } from './store/index.js';
+import { exportWiki } from './wiki.js';
 
 const store = getStore();
 if (store.mode !== 'local') {
@@ -19,9 +20,9 @@ const edi = await store.upsertProject('EDI Geçişi');
 const ai = await store.upsertProject('Yapay Zekâ Asistanı');
 
 const cards = [
-  { title: 'Müşteri X için EDI test dosyalarını onayla', status: 'inbox', priority: 'critical', project_id: edi.id, due_date: day(0), people: ['Deniz Kaya'], sources: [{ type: 'outlook', title: 'RE: EDI test sonuçları' }], description: '> "Cuma\'ya kadar onay gelmezse canlıya geçişi bir hafta ertelemek zorundayız."' },
+  { title: 'Müşteri X için EDI test dosyalarını onayla', status: 'inbox', priority: 'critical', project_id: edi.id, requested_by: 'Deniz Kaya', wiki_slug: 'edi-gecisi', due_date: day(0), people: ['Deniz Kaya'], sources: [{ type: 'outlook', title: 'RE: EDI test sonuçları' }], description: '> "Cuma\'ya kadar onay gelmezse canlıya geçişi bir hafta ertelemek zorundayız."' },
   { title: 'Depo ekibine el terminali eğitim tarihini bildir', status: 'inbox', priority: 'medium', project_id: wms.id, people: ['Ece Demir'], sources: [{ type: 'teams', title: 'Depo Operasyon sohbeti' }] },
-  { title: 'Bütçe revizyonu sunumunu hazırla', status: 'todo', priority: 'high', due_date: day(2), people: ['Murat Aydın'], sources: [{ type: 'outlook', title: '2027 IT bütçesi' }] },
+  { title: 'Bütçe revizyonu sunumunu hazırla', status: 'todo', priority: 'high', due_date: day(2), requested_by: 'Murat Aydın', people: ['Murat Aydın'], sources: [{ type: 'outlook', title: '2027 IT bütçesi' }] },
   { title: 'WMS API dokümantasyonunu incele', status: 'todo', priority: 'medium', project_id: wms.id },
   { title: 'Rota optimizasyonu PoC sonuçlarını raporla', status: 'doing', priority: 'high', project_id: ai.id, due_date: day(1) },
   { title: 'Güneş arayüzünü tamamla', status: 'doing', priority: 'medium', project_id: ai.id, created_by: 'user' },
@@ -72,4 +73,51 @@ await store.setState('last_collect', ago(1.2));
 await store.setState('last_morning', ago(2));
 const r = await store.startRun('morning');
 await store.finishRun(r.id, { status: 'ok' });
+await store.upsertWikiPage({
+  slug: 'genel-bakis',
+  title: 'Genel bakış',
+  kind: 'overview',
+  summary: 'Aktif projeler ve kişiler',
+  content: '## Aktif projeler\n- [[edi-gecisi]] — canlıya geçiş Cuma\n- [[wms-entegrasyonu]] — el terminali eğitimi bekliyor\n\n## Sık yazışılanlar\n- [[deniz-kaya]] (Müşteri X)\n- [[ece-demir]] (Depo Operasyon)',
+  links: ['edi-gecisi', 'wms-entegrasyonu', 'deniz-kaya', 'ece-demir'],
+  sources: [],
+});
+await store.upsertWikiPage({
+  slug: 'edi-gecisi',
+  title: 'EDI Geçişi',
+  kind: 'project',
+  summary: 'Müşteri X ile EDI entegrasyonu; canlıya geçiş Cuma hedefleniyor',
+  content: '## Amaç\nMüşteri X sipariş ve irsaliye akışının EDI üzerinden otomatikleşmesi.\n\n## Durum\nTest dosyaları onay bekliyor. **Risk:** onay gecikirse canlıya geçiş bir hafta kayar.\n\n> "Cuma\'ya kadar onay gelmezse canlıya geçişi bir hafta ertelemek zorundayız." (mail, [[deniz-kaya]])\n\n## Kimler\n- [[deniz-kaya]] — Müşteri X teknik sorumlu\n\n## Zaman çizelgesi\n| Tarih | Olay | Kaynak |\n|---|---|---|\n| 28 Eki | Test dosyaları v1 gönderildi | mail |\n| 2 Kas | v2 geldi, onay bekleniyor | mail |\n\n## Açık sorular\n- Finans ekibi faturalama akışına dahil edilecek mi?',
+  links: ['deniz-kaya'],
+  sources: [{ type: 'outlook', title: 'RE: EDI test sonuçları' }],
+});
+await store.upsertWikiPage({
+  slug: 'deniz-kaya',
+  title: 'Deniz Kaya',
+  kind: 'person',
+  summary: 'Müşteri X — EDI teknik sorumlusu',
+  content: '## Rol\nMüşteri X tarafında EDI projesinin teknik sorumlusu.\n\n## İşler\n- [[edi-gecisi]]\n\n## İletişim notları\nTarihlere çok sadık; gecikmeyi hemen yazıyor.',
+  links: ['edi-gecisi'],
+  sources: [],
+});
+const ev = await store.insertEvents([
+  { source: 'teams', external_id: 'demo-t1', occurred_at: ago(3), from_name: 'Bahadır Bey', from_address: null, subject: 'Fiyat verileri', summary: 'Bahadır Bey şube bazlı güncel fiyat verilerini istiyor.', excerpt: null, link: null, needs_reply: true, waiting_on: 'me', due_date: null, importance: 4, project_hint: 'Fiyat otomasyonu', thread_id: 'chat-demo-1' },
+]);
+void ev;
+const at = (hUtc: number) => { const d = new Date(); d.setUTCHours(hUtc, 0, 0, 0); return d.toISOString(); };
+await store.insertEvents([
+  { source: 'calendar', external_id: 'demo-c1', occurred_at: at(12), from_name: null, from_address: null, subject: 'WMS haftalık durum', summary: 'WMS haftalık durum toplantısı', excerpt: null, link: null, needs_reply: false, waiting_on: null, due_date: null, importance: 3, project_hint: 'WMS', processed: true },
+  { source: 'calendar', external_id: 'demo-c2', occurred_at: at(14), from_name: null, from_address: null, subject: 'Bütçe ön görüşme', summary: 'Bütçe ön görüşme', excerpt: null, link: null, needs_reply: false, waiting_on: null, due_date: null, importance: 3, project_hint: null, processed: true },
+]);
+const evRow = (await store.listEvents({ limit: 50 })).find((e) => e.external_id === 'demo-t1')!;
+await store.updateEvents([evRow.id], { processed: true });
+const target = (await store.listCards()).find((c) => c.title.startsWith('Rota'))!;
+await store.createPendingAction({
+  action: 'confirm_link',
+  target_id: target.id,
+  title: "Bahadır Bey'in şube fiyat verisi talebi, 'Rota optimizasyonu PoC' kartıyla aynı iş mi?",
+  reason: `Kart: ${target.title}`,
+  payload: { event_ids: [evRow.id], new_card_title: 'Bahadır Bey için şube fiyat verilerini hazırla', requested_by: 'Bahadır Bey' },
+});
+await exportWiki(store);
 console.log('Demo verisi yüklendi → data/local-db.json');

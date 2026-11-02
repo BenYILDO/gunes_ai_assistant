@@ -3,7 +3,8 @@ import type { Request, Response } from 'express';
 import { config } from './config.js';
 import { runClaude, type RunResult } from './claude/runner.js';
 import { chatSystemContext } from './agents/prompts.js';
-import { buildBoardContext, buildMemoryContext, ensureSoul } from './agents/soul.js';
+import { buildBoardContext, buildMemoryContext, buildWikiIndex, ensureSoul } from './agents/soul.js';
+import { exportWiki } from './wiki.js';
 import { getStore } from './store/index.js';
 
 const TOOL_TR: Record<string, string> = {
@@ -27,6 +28,13 @@ const TOOL_TR: Record<string, string> = {
   start_scan: 'Taramayı başlatıyor',
   propose_deletion: 'Silme onayı istiyor',
   update_memory: 'Hafızasını düzeltiyor',
+  ask_link: 'Size soruyor',
+  link_thread: 'Yazışmayı projeye bağlıyor',
+  search_chats: 'Eski sohbetlere bakıyor',
+  wiki_index: 'Wiki\'ye bakıyor',
+  wiki_read: 'Wiki sayfasını okuyor',
+  wiki_write: 'Wiki\'yi güncelliyor',
+  wiki_search: 'Wiki\'de arıyor',
   write_journal: 'Günlüğüne yazıyor',
   WebFetch: 'Kaynağı okuyor',
 };
@@ -57,7 +65,7 @@ export async function chatHandler(req: Request, res: Response) {
   const tools: string[] = [];
   const run = async (fresh: boolean): Promise<RunResult> => {
     const prompt = fresh
-      ? `${chatSystemContext(await buildMemoryContext(store, { compact: true }), await buildBoardContext(store))}\n\n---\n\n${message}`
+      ? `${chatSystemContext(await buildMemoryContext(store, { compact: true }), await buildBoardContext(store), await buildWikiIndex(store))}\n\n---\n\n${message}`
       : message;
     return runClaude({
       prompt,
@@ -90,6 +98,7 @@ export async function chatHandler(req: Request, res: Response) {
   const text = result.text || (result.isError ? 'Bir sorun oluştu.' : '');
   await store.addChatMessage({ session_id: session.id, role: 'assistant', content: text, tools });
   await store.touchChatSession(session.id);
+  if (tools.some((t) => /wiki|Wiki/.test(t))) void exportWiki(store);
   send({ type: 'done', text, isError: result.isError });
   res.end();
 }

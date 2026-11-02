@@ -280,6 +280,12 @@ export function CardView({
 
       <div className={`pr-3 text-[13px] font-medium leading-snug text-ink ${done ? 'line-through decoration-white/30' : ''}`}>{card.title}</div>
 
+      {card.requested_by && (
+        <div className="mt-1 flex items-center gap-1 text-[11px] text-ink-faint">
+          <UserRound size={10} /> {card.requested_by}
+        </div>
+      )}
+
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         {project && (
           <span className="rounded-md bg-[color:var(--accent)]/12 px-1.5 py-0.5 text-[10.5px] text-accent">{project}</span>

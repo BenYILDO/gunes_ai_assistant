@@ -1,6 +1,7 @@
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { api, type Card, type CardStatus, type PendingAction, type Suggestion } from './lib/api';
+import { api, type Card, type CardStatus, type PendingAction, type Suggestion, type WeatherKind } from './lib/api';
+import { buildAgenda } from './lib/agenda';
 import { Approvals } from './components/Approvals';
 import { usePoll } from './lib/hooks';
 import { phaseOf, relTime, type Phase } from './lib/time';
@@ -12,40 +13,63 @@ import { Header, type View } from './components/Header';
 import { HistoryView } from './components/HistoryView';
 import { Intro } from './components/Intro';
 import { MemoryView } from './components/MemoryView';
+import { WikiView } from './components/WikiView';
 import { Sky } from './components/Sky';
 import { SuggestionsPanel } from './components/Suggestions';
 import { useToast } from './components/Toasts';
 
 const params = new URLSearchParams(location.search);
-const today = () => new Date().toLocaleDateString('sv-SE');
+const todayKey = () => new Date().toLocaleDateString('sv-SE');
 const INTRO_KEY = 'gunes.introDay';
 
 function shouldPlayIntro() {
   if (params.get('intro') === '1') return true;
   if (params.get('intro') === '0') return false;
   try {
-    return localStorage.getItem(INTRO_KEY) !== today();
+    return localStorage.getItem(INTRO_KEY) !== todayKey();
   } catch {
     return true;
   }
 }
 
-function usePhase(): Phase {
+function usePhase(sun?: { sunrise: string | null; sunset: string | null }): Phase {
   const forced = params.get('phase') as Phase | null;
-  const [phase, setPhase] = useState<Phase>(forced ?? phaseOf());
+  const [phase, setPhase] = useState<Phase>(forced ?? phaseOf(new Date(), sun));
   useEffect(() => {
     if (forced) return;
-    const t = setInterval(() => setPhase(phaseOf()), 60_000);
+    setPhase(phaseOf(new Date(), sun));
+    const t = setInterval(() => setPhase(phaseOf(new Date(), sun)), 60_000);
     return () => clearInterval(t);
-  }, [forced]);
+  }, [forced, sun?.sunrise, sun?.sunset]);
   useEffect(() => {
     document.documentElement.dataset.phase = phase;
   }, [phase]);
   return phase;
 }
 
+/** Konum izni istenir (Windows/Edge konumu); izin yoksa sunucu .env'deki ya da varsayılan konumu kullanır. */
+function useLocationShare(onDone: () => void) {
+  useEffect(() => {
+    if (!('geolocation' in navigator)) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => void api.setLocation(pos.coords.latitude, pos.coords.longitude).then(onDone).catch(() => undefined),
+      () => undefined,
+      { maximumAge: 30 * 60_000, timeout: 15_000 },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+}
+
 export default function App() {
-  const phase = usePhase();
+  const weather = usePoll(api.weather, 15 * 60_000);
+  const today = usePoll(api.today, 60_000);
+  useLocationShare(() => {
+    void weather.refresh();
+    void today.refresh();
+  });
+  const forcedWeather = params.get('weather') as WeatherKind | null;
+  const weatherKind = forcedWeather ?? weather.data?.kind ?? null;
+  const phase = usePhase(weather.data ?? undefined);
   const toast = useToast();
   const [view, setView] = useState<View>('board');
   const [chatOpen, setChatOpen] = useState(false);
@@ -61,15 +85,17 @@ export default function App() {
   const actions = usePoll(api.actions, 20000);
   const memory = usePoll(api.memory, view === 'memory' ? 30000 : 0, [view]);
   const runs = usePoll(api.runs, view === 'history' ? 8000 : 0, [view]);
+  const wiki = usePoll(api.wiki, view === 'wiki' ? 30000 : 0, [view]);
 
   const refreshAll = useCallback(() => {
     void board.refresh();
     void briefing.refresh();
     void suggestions.refresh();
     void actions.refresh();
+    void today.refresh();
     void memory.refresh();
     void status.refresh();
-  }, [board, briefing, suggestions, actions, memory, status]);
+  }, [board, briefing, suggestions, actions, memory, status, today]);
 
   // Çalışma bittiğinde her şeyi yenile, sonucu bildir
   const prevRunning = useRef<string | null>(null);
@@ -96,7 +122,7 @@ export default function App() {
 
   const finishIntro = useCallback(() => {
     try {
-      localStorage.setItem(INTRO_KEY, today());
+      localStorage.setItem(INTRO_KEY, todayKey());
     } catch {
       /* yoksay */
     }
@@ -107,6 +133,8 @@ export default function App() {
   const projects = board.data?.projects ?? [];
   const openCard = cards.find((c) => c.id === openCardId) ?? null;
   const user = status.data?.user;
+
+  const agenda = useMemo(() => buildAgenda(today.data), [today.data]);
 
   const bootLines = useMemo(() => {
     const s = status.data;
@@ -175,7 +203,7 @@ export default function App() {
 
   return (
     <LayoutGroup>
-      <Sky phase={phase} busy={Boolean(running)} />
+      <Sky phase={phase} busy={Boolean(running)} weather={weatherKind} />
 
       <AnimatePresence>
         {intro && introReady && (
@@ -186,6 +214,9 @@ export default function App() {
             userTitle={user?.title ?? 'Bey'}
             headline={briefing.data?.morning && Date.now() - new Date(briefing.data.morning.created_at).getTime() < 14 * 3600_000 ? briefing.data.morning.headline : null}
             bootLines={bootLines}
+            agenda={agenda.items}
+            agendaSpeech={agenda.speech}
+            weather={weather.data}
             onDone={finishIntro}
           />
         )}
@@ -209,6 +240,7 @@ export default function App() {
             setIntro(true);
           }}
           showSun={!intro}
+          weather={weather.data}
         />
 
         {offline && (
@@ -230,6 +262,7 @@ export default function App() {
                 <div className="scroll-thin min-h-0 space-y-4 overflow-y-auto pr-1 max-lg:max-h-[45vh]">
                   <Approvals items={actions.data ?? []} onResolve={(a, d) => void resolveAction(a, d)} />
                   <BriefingPanel
+                    agenda={agenda.items}
                     briefing={briefing.data?.morning ?? null}
                     updates={briefing.data?.updates ?? []}
                     status={status.data}
@@ -240,6 +273,11 @@ export default function App() {
                 <div className="min-h-0 min-w-0">
                   <Board cards={cards} projects={projects} onMove={(c, s) => void moveCard(c, s)} onOpen={(c) => setOpenCardId(c.id)} onQuickAdd={(t, s) => void quickAdd(t, s)} />
                 </div>
+              </motion.div>
+            )}
+            {view === 'wiki' && (
+              <motion.div key="wiki" className="h-full" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.15 } }}>
+                <WikiView pages={wiki.data ?? []} onOpenCard={setOpenCardId} />
               </motion.div>
             )}
             {view === 'memory' && (

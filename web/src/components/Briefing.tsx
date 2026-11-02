@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import type { Briefing, Status } from '../lib/api';
 import { fmtTime, relTime } from '../lib/time';
 import { Markdown } from './Markdown';
+import type { AgendaItem } from '../lib/agenda';
 import { Button, Empty, Panel, PanelTitle } from './ui';
 
 function CountUp({ value }: { value: number }) {
@@ -24,11 +25,13 @@ const TILES = [
 ];
 
 export function BriefingPanel({
+  agenda,
   briefing,
   updates,
   status,
   onRun,
 }: {
+  agenda: AgendaItem[];
   briefing: Briefing | null;
   updates: Briefing[];
   status: Status | null;
@@ -49,6 +52,24 @@ export function BriefingPanel({
       >
         Sabah brifingi
       </PanelTitle>
+
+      {agenda.length > 0 && (
+        <div className="mb-4 space-y-1.5 rounded-xl border border-line bg-white/[0.03] p-3">
+          <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-ink-faint">Bugün</div>
+          {agenda.map((a, i) => (
+            <motion.div
+              key={a.text}
+              initial={{ opacity: 0, x: -6 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.1 + i * 0.05 }}
+              className="flex items-start gap-2 text-[12.5px] leading-snug text-ink-dim"
+            >
+              <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-accent" />
+              {a.text}
+            </motion.div>
+          ))}
+        </div>
+      )}
 
       {!briefing ? (
         <Empty icon={<Sun size={30} />} title="Henüz brifing yok">

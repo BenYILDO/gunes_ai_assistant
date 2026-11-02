@@ -83,6 +83,12 @@ Masaüstündeki **Güneş** kısayoluna tıklayın, sonra panodaki **"Geçmişi 
 | Mesai içinde 2 saatte bir | Takip: yeni gelişme varsa kartlar güncellenir, öneriler eklenir |
 | Her an | **Güneş'e yaz** ile sohbet. Kart açtırabilir, mail aratabilir, taslak hazırlatabilir, araştırma yaptırabilirsiniz |
 
+**Bilgi birikimi — Wiki:** Güneş her taramada dokunduğu projeler ve kişiler için wiki sayfaları açar ya da günceller (Karpathy'nin *LLM Wiki* deseni). Sayfalar `[[bağlantı]]` ile birbirine bağlıdır ve her iddianın kaynağı yazılıdır. Bir mail dizisi ya da Teams sohbeti bir projeye bağlandığında, o diziden gelen her yeni mesaj otomatik olarak o projeye işlenir. Sohbette *"bu Teams grubunu Akaryakıt projesine bağla"* diyebilirsiniz. Wiki, `data\wiki\` klasörüne de markdown olarak yazılır; bu klasörü **Obsidian** ile açıp grafik görünümünde inceleyebilirsiniz.
+
+**Emin değilse sorar:** Yeni bir mesaj var olan bir kartla aynı iş gibi görünüyor ama Güneş emin değilse birleştirmez; panoda **"Aynı iş mi?"** diye sorar. Sizin gönderdiğiniz mail ve mesajlar ("eklendi", "gönderdim" gibi) ilerleme bildirimi sayılır ve ilgili kart güncellenir.
+
+**Hava ve konum:** Arayüz ilk açılışta konum izni ister. İzin verirseniz gökyüzü teması bulunduğunuz yerin gerçek gün doğumu ve batımına, ayrıca havaya (yağmur, kar, bulut, sis, fırtına) göre değişir. İzin vermezseniz `.env` dosyasındaki `GUNES_LAT`/`GUNES_LON` değerleri, onlar da boşsa İstanbul kullanılır. Hava verisi Open-Meteo'dan anahtarsız alınır.
+
 **Geri bildirim Güneş'i eğitir:**
 - Bir öneride "Bilerek yaptım" → aynı şeyi bir daha sormaz.
 - Güneş'in açtığı bir kartta "Gereksizdi — Güneş öğrensin" → bu tür kartları açmaz.
@@ -112,7 +118,7 @@ Sonra herhangi bir projede *"Güneş panosunda X kartına ilerleme notu düş"* 
 | `scripts\windows\stop-gunes.ps1` | Sunucuyu durdurur |
 | `scripts\windows\uninstall-autostart.ps1` | Açılıştan kaldırır |
 
-Arayüz adresine eklenebilen parametreler: `?intro=1` karşılamayı zorla oynatır, `?phase=night` (`dawn|day|dusk|night`) temayı önizler.
+Arayüz adresine eklenebilen parametreler: `?intro=1` karşılamayı zorla oynatır, `?phase=night` (`dawn|day|dusk|night`) temayı, `?weather=rain` (`clear|partly|clouds|overcast|fog|drizzle|rain|snow|storm`) havayı önizler.
 
 ## Maliyet ve limitler (Pro)
 

@@ -8,7 +8,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { buildBoardContext, ensureSoul, STATUS_TR } from './agents/soul.js';
+import { buildBoardContext, ensureSoul, formatEvents, STATUS_TR } from './agents/soul.js';
+import { extractLinks, slugify } from './wiki.js';
 import { config } from './config.js';
 import { getStore, type Card, type CardStatus, type SourceRef } from './store/index.js';
 
@@ -80,6 +81,12 @@ server.registerTool(
             due_date: z.string().nullable().optional().describe('YYYY-MM-DD'),
             importance: z.number().int().min(1).max(5).default(3),
             project_hint: z.string().nullable().optional(),
+            from_me: z.boolean().default(false).describe('Mesajı KULLANICININ KENDİSİ mi gönderdi (gönderilen mail / kendi Teams mesajı)'),
+            thread_id: z
+              .string()
+              .nullable()
+              .optional()
+              .describe('Konuşma dizisi: Outlook conversationId; yoksa "subj:" + RE/FW ön ekleri atılmış konu. Teams: chatId (URI içindeki)'),
           }),
         )
         .max(100),
@@ -102,6 +109,8 @@ server.registerTool(
         due_date: e.due_date || null,
         importance: e.importance,
         project_hint: e.project_hint ?? null,
+        from_me: e.from_me,
+        thread_id: e.thread_id || null,
       })),
     );
     return ok(`${r.inserted} yeni olay kaydedildi, ${r.skipped} tanesi zaten vardı.`);
@@ -114,17 +123,7 @@ server.registerTool(
   async () => {
     const ev = await store.listEvents({ unprocessed: true, limit: 150 });
     if (!ev.length) return ok('İşlenmemiş olay yok.');
-    return ok(
-      ev
-        .map(
-          (e) =>
-            `[${e.id.slice(0, 8)}] ${e.occurred_at.slice(0, 16)} · ${e.source} · ${e.from_name ?? '?'} · ${e.subject ?? ''}\n` +
-            `  ${e.summary}` +
-            (e.excerpt ? `\n  > ${e.excerpt}` : '') +
-            `\n  önem:${e.importance}${e.needs_reply ? ' · CEVAP BEKLİYOR' : ''}${e.waiting_on ? ` · bekleyen:${e.waiting_on}` : ''}${e.due_date ? ` · tarih:${e.due_date}` : ''}${e.project_hint ? ` · proje?:${e.project_hint}` : ''}${e.link ? ` · link:${e.link}` : ''} · ext:${e.external_id}`,
-        )
-        .join('\n'),
-    );
+    return ok(await formatEvents(store, ev));
   },
 );
 
@@ -199,6 +198,8 @@ server.registerTool(
       project: z.string().optional().describe('Proje adı; yoksa oluşturulur'),
       due_date: z.string().optional().describe('YYYY-MM-DD'),
       waiting_on: z.string().optional().describe("'me', 'them' veya kişi adı"),
+      requested_by: z.string().optional().describe('İşi isteyen / kimden geldiği (ad soyad). Kullanıcının kendi işiyse boş bırak.'),
+      wiki_slug: z.string().optional().describe('İlgili proje wiki sayfasının slug’ı'),
       people: z.array(z.string()).default([]),
       tags: z.array(z.string()).default([]),
       sources: z.array(sourceSchema).default([]),
@@ -217,6 +218,8 @@ server.registerTool(
       people: a.people,
       tags: a.tags,
       sources: a.sources as SourceRef[],
+      requested_by: a.requested_by ?? null,
+      wiki_slug: a.wiki_slug ?? null,
       created_by: 'gunes',
       position: Date.now() / 1e12,
     });
@@ -240,6 +243,8 @@ server.registerTool(
       project: z.string().optional(),
       due_date: z.string().nullable().optional(),
       waiting_on: z.string().nullable().optional(),
+      requested_by: z.string().optional(),
+      wiki_slug: z.string().optional(),
       add_people: z.array(z.string()).optional(),
       add_tags: z.array(z.string()).optional(),
       add_sources: z.array(sourceSchema).optional(),
@@ -257,6 +262,8 @@ server.registerTool(
       if (a.project) patch.project_id = await projectId(a.project);
       if (a.due_date !== undefined) patch.due_date = a.due_date || null;
       if (a.waiting_on !== undefined) patch.waiting_on = a.waiting_on;
+      if (a.requested_by) patch.requested_by = a.requested_by;
+      if (a.wiki_slug) patch.wiki_slug = a.wiki_slug;
       if (a.add_people) patch.people = [...new Set([...c.people, ...a.add_people])];
       if (a.add_tags) patch.tags = [...new Set([...c.tags, ...a.add_tags])];
       if (a.add_sources) patch.sources = [...c.sources, ...(a.add_sources as SourceRef[])];
@@ -409,6 +416,154 @@ server.registerTool(
     } catch (e) {
       return fail((e as Error).message);
     }
+  },
+);
+
+// ---------------------------------------------------------------- Belirsiz eşleşmeler ve diziler
+server.registerTool(
+  'ask_link',
+  {
+    description:
+      'Yeni olay(lar) var olan bir kartla AYNI iş mi, emin değilsen kullanıcıya SOR. Karar verilene kadar olaylar beklemede kalır. Onaylanırsa karta bağlanır; reddedilirse olaylardan ayrı bir kart açılır. Farklı kişilerden gelen, farklı yer/kurum/sistem adı geçen işleri asla sormadan birleştirme.',
+    inputSchema: {
+      event_ids: z.array(z.string()).min(1),
+      card_id: z.string(),
+      question: z.string().describe('Kısa soru, örn: "Bahadır Bey\'in EPDK verisi talebi, Akaryakıt fiyat otomasyonu kartıyla aynı iş mi?"'),
+      new_card_title: z.string().describe('Farklı iş çıkarsa açılacak kartın başlığı'),
+      requested_by: z.string().optional(),
+    },
+  },
+  async ({ event_ids, card_id, question, new_card_title, requested_by }) => {
+    try {
+      const card = await resolveCard(card_id);
+      const ids = await resolveEventIds(event_ids);
+      if (!ids.length) return fail('Olay bulunamadı.');
+      await store.createPendingAction({
+        action: 'confirm_link',
+        target_id: card.id,
+        title: question,
+        reason: `Kart: ${card.title}`,
+        payload: { event_ids: ids, new_card_title, requested_by: requested_by ?? null },
+      });
+      // Karar verilene kadar planlayıcı bu olayları tekrar işlemesin
+      await store.updateEvents(ids, { processed: true });
+      return ok('Kullanıcıya soruldu; cevap gelene kadar bu olaylar beklemede.');
+    } catch (e) {
+      return fail((e as Error).message);
+    }
+  },
+);
+
+server.registerTool(
+  'link_thread',
+  {
+    description:
+      'Bir mail dizisini ya da Teams sohbetini bir projeye (wiki sayfası) ve/veya karta kalıcı olarak bağlar. Bundan sonra o diziye gelen her mesaj otomatik olarak o projeye ait sayılır. Kullanıcı açıkça istediğinde ya da dizi zaten açıkça o işe aitse kullan.',
+    inputSchema: {
+      thread_id: z.string(),
+      source: z.enum(['outlook', 'teams']).default('outlook'),
+      page_slug: z.string().optional(),
+      card_id: z.string().optional(),
+      note: z.string().optional(),
+    },
+  },
+  async ({ thread_id, source, page_slug, card_id, note }) => {
+    try {
+      const card = card_id ? await resolveCard(card_id) : null;
+      const slug = page_slug ? slugify(page_slug) : null;
+      if (slug && !(await store.getWikiPage(slug))) return fail(`Wiki sayfası yok: ${slug}. Önce wiki_write ile oluştur.`);
+      await store.upsertThreadLink({ thread_id, source, page_slug: slug, card_id: card?.id ?? null, note: note ?? null });
+      return ok(`Dizi bağlandı${slug ? ` → [[${slug}]]` : ''}${card ? ` → kart ${card.title}` : ''}.`);
+    } catch (e) {
+      return fail((e as Error).message);
+    }
+  },
+);
+
+server.registerTool(
+  'search_chats',
+  {
+    description: 'Kullanıcıyla Güneş arayüzünde yapılmış ESKİ sohbetlerde arama yapar ("geçen konuştuğumuz…" gibi durumlar için).',
+    inputSchema: { query: z.string().min(2) },
+  },
+  async ({ query }) => {
+    const rows = await store.searchChatMessages(query, 25);
+    if (!rows.length) return ok('Eski sohbetlerde eşleşme yok.');
+    return ok(
+      rows
+        .map((m) => `${m.created_at.slice(0, 16)} · "${m.session_title}" · ${m.role === 'user' ? 'Kullanıcı' : 'Güneş'}: ${m.content.slice(0, 400)}`)
+        .join('\n\n'),
+    );
+  },
+);
+
+// ---------------------------------------------------------------- Wiki
+server.registerTool(
+  'wiki_index',
+  {
+    description: "Wiki'nin kataloğu (index.md): tüm sayfalar, türü ve tek satırlık özeti. Bir şeyi yanıtlamadan veya sayfa yazmadan önce önce buna bak.",
+    inputSchema: {},
+  },
+  async () => {
+    const pages = await store.listWikiPages();
+    if (!pages.length) return ok('Wiki henüz boş.');
+    return ok(pages.map((p) => `- [[${p.slug}]] (${p.kind}) ${p.title} — ${p.summary} · ${p.updated_at.slice(0, 10)}`).join('\n'));
+  },
+);
+
+server.registerTool(
+  'wiki_read',
+  { description: 'Bir wiki sayfasını tam olarak okur.', inputSchema: { slug: z.string() } },
+  async ({ slug }) => {
+    const p = await store.getWikiPage(slugify(slug));
+    if (!p) return fail(`Sayfa yok: ${slug}`);
+    const backlinks = (await store.listWikiPages()).filter((x) => x.links.includes(p.slug)).map((x) => `[[${x.slug}]]`);
+    return ok(
+      `# ${p.title} (${p.kind})\n${p.summary}\n\n${p.content}\n\n---\nKaynaklar: ${p.sources.length}\nBu sayfaya bağlananlar: ${backlinks.join(', ') || '-'}`,
+    );
+  },
+);
+
+server.registerTool(
+  'wiki_write',
+  {
+    description:
+      "Wiki sayfası oluşturur ya da günceller (içeriğin TAMAMINI yazarsın; önce wiki_read ile mevcut hali oku ve koru). Kurallar: markdown; diğer sayfalara [[slug]] ile bağlan; her önemli iddianın sonuna kaynağını yaz (ör. '(mail, 28 Eki, Bahadır Bey)'); kritik cümleleri alıntı olarak aynen koru; çelişki görürsen '⚠️ Çelişki:' diye işaretle. Proje sayfasında: Amaç, Durum, Kimler, Zaman çizelgesi, İlgili yazışmalar, Açık sorular. Kişi sayfasında: Rol, Hangi işler, İletişim notları.",
+    inputSchema: {
+      slug: z.string().describe('küçük harf, tire ile: akaryakit-fiyat-otomasyonu'),
+      title: z.string(),
+      kind: z.enum(['project', 'person', 'topic', 'thread', 'overview']),
+      summary: z.string().max(200).describe('index için tek satır'),
+      content: z.string().max(20000),
+      add_sources: z.array(sourceSchema).default([]),
+    },
+  },
+  async (a) => {
+    const slug = slugify(a.slug);
+    const existing = await store.getWikiPage(slug);
+    await store.upsertWikiPage({
+      slug,
+      title: a.title,
+      kind: a.kind,
+      summary: a.summary,
+      content: a.content,
+      links: extractLinks(a.content).filter((l) => l !== slug),
+      sources: [...(existing?.sources ?? []), ...(a.add_sources as SourceRef[])].slice(-200),
+    });
+    return ok(`Wiki ${existing ? 'güncellendi' : 'oluşturuldu'}: [[${slug}]]`);
+  },
+);
+
+server.registerTool(
+  'wiki_search',
+  { description: 'Wiki sayfalarının başlık, özet ve içeriğinde arama yapar.', inputSchema: { query: z.string() } },
+  async ({ query }) => {
+    const q = query.toLocaleLowerCase('tr');
+    const hits = (await store.listWikiPages()).filter((p) =>
+      [p.title, p.summary, p.content].some((f) => f.toLocaleLowerCase('tr').includes(q)),
+    );
+    if (!hits.length) return ok('Wiki’de eşleşme yok.');
+    return ok(hits.slice(0, 15).map((p) => `[[${p.slug}]] ${p.title} — ${p.summary}`).join('\n'));
   },
 );
 

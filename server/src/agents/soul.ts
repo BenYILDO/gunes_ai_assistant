@@ -1,5 +1,5 @@
 import { config } from '../config.js';
-import type { Card, Memory, Project, Store } from '../store/index.js';
+import type { Card, EventItem, Memory, Project, Store } from '../store/index.js';
 
 /**
  * Ruhun çekirdeği. İlk açılışta hafızaya `locked=true` olarak yazılır;
@@ -106,6 +106,7 @@ export async function buildBoardContext(store: Store) {
     `- [${c.id.slice(0, 8)}] ${c.title} · ${STATUS_TR[c.status]} · ${c.priority}` +
     (c.project_id ? ` · proje: ${pname.get(c.project_id)}` : '') +
     (c.due_date ? ` · son tarih: ${c.due_date}` : '') +
+    (c.requested_by ? ` · isteyen: ${c.requested_by}` : '') +
     (c.waiting_on ? ` · bekleyen: ${c.waiting_on}` : '') +
     ` · güncelleme: ${c.updated_at.slice(0, 10)}`;
   return [
@@ -117,3 +118,36 @@ export async function buildBoardContext(store: Store) {
 }
 
 export { STATUS_TR };
+
+/**
+ * Olayları planlayıcı/araçlar için biçimlendirir. Kullanıcının kendi mesajları ve
+ * daha önce bir projeye/karta bağlanmış diziler açıkça işaretlenir.
+ */
+export async function formatEvents(store: Store, events: EventItem[]) {
+  const threadIds = [...new Set(events.map((e) => e.thread_id).filter((t): t is string => Boolean(t)))];
+  const links = new Map((await store.getThreadLinks(threadIds)).map((l) => [l.thread_id, l]));
+  const cards = links.size ? new Map((await store.listCards({ includeDone: true })).map((c) => [c.id, c])) : new Map();
+  return events
+    .map((e) => {
+      const l = e.thread_id ? links.get(e.thread_id) : undefined;
+      const linked = l
+        ? ` · 🔗 BAĞLI DİZİ → ${l.page_slug ? `[[${l.page_slug}]]` : ''}${l.card_id ? ` kart [${l.card_id.slice(0, 8)}] ${cards.get(l.card_id)?.title ?? ''}` : ''}`
+        : '';
+      return (
+        `[${e.id.slice(0, 8)}] ${e.occurred_at.slice(0, 16)} · ${e.source} · ` +
+        (e.from_me ? '★ KULLANICININ KENDİ MESAJI' : `${e.from_name ?? '?'}${e.from_address ? ` <${e.from_address}>` : ''}`) +
+        ` · ${e.subject ?? ''}\n  ${e.summary}` +
+        (e.excerpt ? `\n  > ${e.excerpt}` : '') +
+        `\n  önem:${e.importance}${e.needs_reply ? ' · CEVAP BEKLİYOR' : ''}${e.waiting_on ? ` · bekleyen:${e.waiting_on}` : ''}${e.due_date ? ` · tarih:${e.due_date}` : ''}${e.project_hint ? ` · proje?:${e.project_hint}` : ''}` +
+        `${e.thread_id ? ` · dizi:${e.thread_id.slice(0, 60)}` : ''}${linked}${e.link ? ` · link:${e.link}` : ''} · ext:${e.external_id}`
+      );
+    })
+    .join('\n');
+}
+
+/** Wiki kataloğu (index): planlayıcı ve sohbet bağlamı için. */
+export async function buildWikiIndex(store: Store) {
+  const pages = await store.listWikiPages();
+  if (!pages.length) return '(Wiki henüz boş.)';
+  return pages.map((p) => `- [[${p.slug}]] (${p.kind}) ${p.title} — ${p.summary}`).join('\n');
+}

@@ -39,6 +39,9 @@ export interface Card {
   created_at: string;
   updated_at: string;
   closed_at: string | null;
+  /** İşi isteyen / kimden geldiği */
+  requested_by: string | null;
+  wiki_slug: string | null;
 }
 
 export interface CardActivity {
@@ -68,6 +71,10 @@ export interface EventItem {
   project_hint: string | null;
   processed: boolean;
   card_id: string | null;
+  /** Kullanıcının kendi gönderdiği mesaj mı (ilerleme sinyali) */
+  from_me: boolean;
+  /** Mail konuşma dizisi / Teams sohbet kimliği */
+  thread_id: string | null;
   created_at: string;
 }
 
@@ -84,10 +91,12 @@ export interface Suggestion {
 
 export interface PendingAction {
   id: string;
-  action: 'delete_card' | 'delete_memory';
+  action: 'delete_card' | 'delete_memory' | 'confirm_link';
   target_id: string;
   title: string;
   reason: string;
+  /** confirm_link için: { event_ids, question } */
+  payload: Record<string, unknown>;
   status: 'pending' | 'approved' | 'rejected';
   created_at: string;
   resolved_at: string | null;
@@ -154,8 +163,31 @@ export interface ChatMessage {
 }
 
 export type NewCard = Partial<Omit<Card, 'id' | 'created_at' | 'updated_at'>> & { title: string };
-export type NewEvent = Omit<EventItem, 'id' | 'created_at' | 'processed' | 'card_id'> &
-  Partial<Pick<EventItem, 'processed' | 'card_id'>>;
+export type NewEvent = Omit<EventItem, 'id' | 'created_at' | 'processed' | 'card_id' | 'from_me' | 'thread_id'> &
+  Partial<Pick<EventItem, 'processed' | 'card_id' | 'from_me' | 'thread_id'>>;
+
+export const WIKI_KINDS = ['project', 'person', 'topic', 'thread', 'overview'] as const;
+export type WikiKind = (typeof WIKI_KINDS)[number];
+export interface WikiPage {
+  id: string;
+  slug: string;
+  title: string;
+  kind: WikiKind;
+  summary: string;
+  content: string;
+  links: string[];
+  sources: SourceRef[];
+  created_at: string;
+  updated_at: string;
+}
+export interface ThreadLink {
+  thread_id: string;
+  source: string;
+  page_slug: string | null;
+  card_id: string | null;
+  note: string | null;
+  created_at: string;
+}
 
 /**
  * Tüm veri erişimi bu arayüzden geçer. İki uygulaması var:
@@ -187,7 +219,7 @@ export interface Store {
 
   listPendingActions(status?: PendingAction['status']): Promise<PendingAction[]>;
   getPendingAction(id: string): Promise<PendingAction | null>;
-  createPendingAction(a: Pick<PendingAction, 'action' | 'target_id' | 'title' | 'reason'>): Promise<PendingAction>;
+  createPendingAction(a: Pick<PendingAction, 'action' | 'target_id' | 'title' | 'reason'> & { payload?: Record<string, unknown> }): Promise<PendingAction>;
   resolvePendingAction(id: string, status: 'approved' | 'rejected'): Promise<void>;
 
   latestBriefing(kind?: Briefing['kind']): Promise<Briefing | null>;
@@ -216,4 +248,12 @@ export interface Store {
   deleteChatSession(id: string): Promise<void>;
   listChatMessages(sessionId: string): Promise<ChatMessage[]>;
   addChatMessage(m: Omit<ChatMessage, 'id' | 'created_at'>): Promise<ChatMessage>;
+  searchChatMessages(query: string, limit?: number): Promise<(ChatMessage & { session_title: string })[]>;
+
+  listWikiPages(): Promise<WikiPage[]>;
+  getWikiPage(slug: string): Promise<WikiPage | null>;
+  upsertWikiPage(p: Pick<WikiPage, 'slug' | 'title' | 'kind' | 'summary' | 'content' | 'links' | 'sources'>): Promise<WikiPage>;
+
+  getThreadLinks(threadIds: string[]): Promise<ThreadLink[]>;
+  upsertThreadLink(l: Omit<ThreadLink, 'created_at'>): Promise<void>;
 }

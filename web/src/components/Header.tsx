@@ -1,7 +1,8 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { Brain, History, LayoutDashboard, MessageCircle, Play, RefreshCw, Sparkles, Volume2, VolumeX } from 'lucide-react';
+import { BookOpen, Brain, History, LayoutDashboard, MessageCircle, Play, RefreshCw, Sparkles, Volume2, VolumeX } from 'lucide-react';
 import { useState } from 'react';
-import type { Status } from '../lib/api';
+import type { Status, Weather } from '../lib/api';
+import { WeatherChip } from './WeatherChip';
 import { useNow } from '../lib/hooks';
 import { setVoiceEnabled, voiceEnabled } from '../lib/speech';
 import { fmtTime, greetingOf, relTime, type Phase } from '../lib/time';
@@ -9,7 +10,7 @@ import { SunCore } from './SunCore';
 import { Button } from './ui';
 import { UsageMeter } from './UsageMeter';
 
-export type View = 'board' | 'memory' | 'history';
+export type View = 'board' | 'wiki' | 'memory' | 'history';
 
 interface Props {
   phase: Phase;
@@ -20,15 +21,17 @@ interface Props {
   onChat: () => void;
   onReplayIntro: () => void;
   showSun: boolean;
+  weather: Weather | null;
 }
 
 const TABS: { id: View; label: string; icon: typeof LayoutDashboard }[] = [
   { id: 'board', label: 'Pano', icon: LayoutDashboard },
+  { id: 'wiki', label: 'Wiki', icon: BookOpen },
   { id: 'memory', label: 'Hafıza', icon: Brain },
   { id: 'history', label: 'Geçmiş', icon: History },
 ];
 
-export function Header({ phase, status, view, onView, onRun, onChat, onReplayIntro, showSun }: Props) {
+export function Header({ phase, status, view, onView, onRun, onChat, onReplayIntro, showSun, weather }: Props) {
   const now = useNow(1000);
   const [voice, setVoice] = useState(voiceEnabled());
   const running = status?.run.running;
@@ -88,6 +91,7 @@ export function Header({ phase, status, view, onView, onRun, onChat, onReplayInt
           </div>
         </div>
 
+        <WeatherChip weather={weather} />
         <UsageMeter usage={status?.usage ?? null} />
 
         <Button

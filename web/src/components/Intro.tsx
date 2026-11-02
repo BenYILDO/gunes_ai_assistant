@@ -1,6 +1,10 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useMemo, useState } from 'react';
+import { CalendarClock, CheckCheck, Flame, Hourglass, Mail } from 'lucide-react';
+import type { AgendaItem } from '../lib/agenda';
+import type { Weather } from '../lib/api';
 import { greetingOf, moodLine, type Phase } from '../lib/time';
+import { WEATHER_ICON } from './WeatherChip';
 import { speak } from '../lib/speech';
 import { SunCore } from './SunCore';
 
@@ -10,10 +14,29 @@ interface Props {
   userTitle: string;
   headline?: string | null;
   bootLines: string[];
+  agenda: AgendaItem[];
+  agendaSpeech: string;
+  weather: Weather | null;
   onDone: () => void;
 }
 
 const EASE = [0.16, 1, 0.3, 1] as const;
+
+const AGENDA_ICON: Partial<Record<AgendaItem['icon'], typeof Mail>> = {
+  meeting: CalendarClock,
+  critical: Flame,
+  due: Hourglass,
+  reply: Mail,
+  review: CheckCheck,
+};
+const AGENDA_COLOR: Record<AgendaItem['icon'], string> = {
+  meeting: 'var(--ok)',
+  critical: 'var(--danger)',
+  due: 'var(--accent)',
+  reply: 'var(--accent)',
+  review: 'var(--ok)',
+  weather: 'var(--info)',
+};
 
 /** Evreye göre güneşin sahneye girişi */
 const sunEntrance: Record<Phase, { initial: Record<string, number | string>; animate: Record<string, number | string> }> = {
@@ -54,7 +77,7 @@ function Letters({
   );
 }
 
-export function Intro({ phase, userName, userTitle, headline, bootLines, onDone }: Props) {
+export function Intro({ phase, userName, userTitle, headline, bootLines, agenda, agendaSpeech, weather, onDone }: Props) {
   const [stage, setStage] = useState(0);
   const hello = `${greetingOf()}, `;
   const name = `${userName} ${userTitle}`;
@@ -65,12 +88,13 @@ export function Intro({ phase, userName, userTitle, headline, bootLines, onDone 
   const lines = useMemo(() => bootLines.slice(0, 5), [bootLines]);
 
   useEffect(() => {
-    const times = [600, 2300, 2900 + lines.length * 380];
+    const greet = 2900 + lines.length * 380;
+    const agendaAt = greet + greeting.length * 32 + 1100;
+    const times = [600, 2300, greet, agendaAt];
     const ts = times.map((t, i) => setTimeout(() => setStage(i + 1), t));
-    const acc = times[times.length - 1];
-    // Selamlama göründükten sonra sesli karşılama
-    ts.push(setTimeout(() => speak(`${greeting}. ${sub}`), acc + 500));
-    const finish = setTimeout(onDone, acc + 5200);
+    // Selamlama göründükten sonra sesli karşılama + günün gündemi
+    ts.push(setTimeout(() => speak(`${greeting}. ${sub} ${agendaSpeech}`), greet + 500));
+    const finish = setTimeout(onDone, agenda.length ? agendaAt + agenda.length * 450 + 6000 : greet + 5200);
     const key = (e: KeyboardEvent) => (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') && onDone();
     window.addEventListener('keydown', key);
     return () => {
@@ -116,7 +140,9 @@ export function Intro({ phase, userName, userTitle, headline, bootLines, onDone 
 
       <div className="relative z-10 flex flex-col items-center">
         <motion.div initial={ent.initial} animate={ent.animate} transition={{ delay: 0.4, duration: 2, ease: EASE }}>
-          <SunCore size={260} phase={phase} reveal layoutId="gunes-sun" />
+          <motion.div animate={{ scale: stage >= 4 && agenda.length ? 0.62 : 1, marginBottom: stage >= 4 && agenda.length ? -60 : 0 }} transition={{ duration: 1, ease: EASE }}>
+            <SunCore size={260} phase={phase} reveal layoutId="gunes-sun" />
+          </motion.div>
         </motion.div>
 
         <div className="mt-6 h-10">
@@ -126,7 +152,12 @@ export function Intro({ phase, userName, userTitle, headline, bootLines, onDone 
         </div>
 
         {/* Açılış satırları */}
-        <div className="mt-4 h-[124px] w-[340px] font-mono text-[12px] text-ink-dim">
+        <motion.div
+          className="mt-4 w-[340px] overflow-hidden font-mono text-[12px] text-ink-dim"
+          initial={{ height: 124 }}
+          animate={{ height: stage >= 4 && agenda.length ? 0 : 124, opacity: stage >= 4 && agenda.length ? 0 : 1 }}
+          transition={{ duration: 0.8, ease: EASE }}
+        >
           {stage >= 2 &&
             lines.map((l, i) => (
               <motion.div
@@ -146,7 +177,7 @@ export function Intro({ phase, userName, userTitle, headline, bootLines, onDone 
                 <span>{l}</span>
               </motion.div>
             ))}
-        </div>
+        </motion.div>
 
         <div className="mt-2 min-h-[110px] text-center">
           {stage >= 3 && (
@@ -172,6 +203,39 @@ export function Intro({ phase, userName, userTitle, headline, bootLines, onDone 
             </>
           )}
         </div>
+
+        {/* Bugün sizi bekleyenler */}
+        <AnimatePresence>
+          {stage >= 4 && agenda.length > 0 && (
+            <motion.div
+              className="glass hud-corners mt-6 w-[min(560px,90vw)] rounded-2xl px-5 py-4"
+              initial={{ opacity: 0, y: 24, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.8, ease: EASE }}
+            >
+              <div className="mb-2.5 font-display text-[11px] font-semibold uppercase tracking-[0.2em] text-ink-faint">Bugün sizi bekleyenler</div>
+              <ul className="space-y-2">
+                {agenda.map((a, i) => {
+                  const Icon = AGENDA_ICON[a.icon] ?? (weather ? WEATHER_ICON[weather.kind] : CalendarClock);
+                  return (
+                    <motion.li
+                      key={a.text}
+                      className="flex items-center gap-3 text-[14.5px] text-ink"
+                      initial={{ opacity: 0, x: -14, filter: 'blur(6px)' }}
+                      animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
+                      transition={{ delay: 0.35 + i * 0.42, duration: 0.6, ease: EASE }}
+                    >
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/[0.07]">
+                        <Icon size={14} style={{ color: AGENDA_COLOR[a.icon] }} />
+                      </span>
+                      <span>{a.text}</span>
+                    </motion.li>
+                  );
+                })}
+              </ul>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       <AnimatePresence>

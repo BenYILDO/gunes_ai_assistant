@@ -26,6 +26,7 @@ export function CardModal({ card, projects, onClose, onSave, onDelete }: Props) 
   const [desc, setDesc] = useState(card.description ?? '');
   const [project, setProject] = useState(projects.find((p) => p.id === card.project_id)?.name ?? '');
   const [due, setDue] = useState(card.due_date ?? '');
+  const [requester, setRequester] = useState(card.requested_by ?? '');
   const [activity, setActivity] = useState<Activity[]>([]);
   const [confirmDel, setConfirmDel] = useState(false);
 
@@ -41,6 +42,7 @@ export function CardModal({ card, projects, onClose, onSave, onDelete }: Props) 
     if (title.trim() && title !== card.title) patch.title = title.trim();
     if (desc !== (card.description ?? '')) patch.description = desc;
     if (due !== (card.due_date ?? '')) patch.due_date = due || null;
+    if (requester.trim() !== (card.requested_by ?? '')) patch.requested_by = requester.trim() || null;
     const curProject = projects.find((p) => p.id === card.project_id)?.name ?? '';
     if (project.trim() !== curProject) {
       if (project.trim()) patch.project = project.trim();
@@ -160,6 +162,17 @@ export function CardModal({ card, projects, onClose, onSave, onDelete }: Props) 
                 />
               </div>
             </div>
+          </div>
+
+          <div>
+            <Label>Kimden / talep eden</Label>
+            <input
+              value={requester}
+              onChange={(e) => setRequester(e.target.value)}
+              onBlur={saveText}
+              placeholder="Kendi işiniz"
+              className="w-full rounded-lg border border-line bg-black/20 px-2.5 py-1.5 text-sm outline-none focus:border-[color:var(--accent)]/60"
+            />
           </div>
 
           <div>

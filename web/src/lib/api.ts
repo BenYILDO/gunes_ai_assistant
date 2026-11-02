@@ -26,6 +26,8 @@ export interface Card {
   created_at: string;
   updated_at: string;
   closed_at: string | null;
+  requested_by: string | null;
+  wiki_slug: string | null;
 }
 export interface Project { id: string; name: string; status: string; summary: string | null }
 export interface Activity { id: string; actor: 'gunes' | 'user'; kind: string; message: string; created_at: string }
@@ -40,12 +42,40 @@ export interface Suggestion {
 }
 export interface PendingAction {
   id: string;
-  action: 'delete_card' | 'delete_memory';
+  action: 'delete_card' | 'delete_memory' | 'confirm_link';
   target_id: string;
   title: string;
   reason: string;
+  payload: Record<string, unknown>;
   created_at: string;
 }
+export type WeatherKind = 'clear' | 'partly' | 'clouds' | 'overcast' | 'fog' | 'drizzle' | 'rain' | 'snow' | 'storm';
+export interface Weather {
+  place: string | null;
+  temp: number;
+  feelsLike: number | null;
+  kind: WeatherKind;
+  label: string;
+  isDay: boolean;
+  cloudCover: number | null;
+  sunrise: string | null;
+  sunset: string | null;
+  todayMax: number | null;
+  todayMin: number | null;
+  rainChance: number | null;
+}
+export interface Today {
+  meetings: { at: string; title: string }[];
+  critical: { id: string; title: string; requested_by: string | null }[];
+  due: { id: string; title: string; due_date: string; overdue: boolean }[];
+  awaitingReply: number;
+  waitingOthers: number;
+  review: number;
+  weather: Weather | null;
+}
+export interface WikiPageMeta { id: string; slug: string; title: string; kind: string; summary: string; links: string[]; updated_at: string }
+export interface WikiPageFull extends WikiPageMeta { content: string; sources: SourceRef[] }
+
 export interface Briefing { id: string; kind: 'morning' | 'tracker'; headline: string; content: string; stats: Record<string, number>; created_at: string }
 export interface Memory {
   id: string;
@@ -122,6 +152,14 @@ export const api = {
   briefing: () => req<{ morning: Briefing | null; updates: Briefing[] }>('/briefing'),
   suggestions: () => req<Suggestion[]>('/suggestions'),
   actions: () => req<PendingAction[]>('/actions'),
+  today: () => req<Today>('/today'),
+  weather: () => req<Weather | null>('/weather'),
+  setLocation: (lat: number, lon: number) => req<Weather | null>('/location', json('POST', { lat, lon })),
+  wiki: () => req<WikiPageMeta[]>('/wiki'),
+  wikiPage: (slug: string) =>
+    req<{ page: WikiPageFull; backlinks: { slug: string; title: string; kind: string }[]; cards: { id: string; title: string; status: CardStatus }[] }>(
+      `/wiki/${encodeURIComponent(slug)}`,
+    ),
   resolveAction: (id: string, decision: 'approve' | 'reject') => req(`/actions/${id}/${decision}`, json('POST')),
   updateSuggestion: (id: string, status: string, lesson?: string) =>
     req(`/suggestions/${id}`, json('PATCH', { status, lesson })),

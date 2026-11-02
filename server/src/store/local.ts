@@ -11,6 +11,8 @@ import type {
   JournalEntry,
   Memory,
   PendingAction,
+  ThreadLink,
+  WikiPage,
   MemoryKind,
   NewCard,
   NewEvent,
@@ -33,6 +35,8 @@ interface Db {
   journal: JournalEntry[];
   chat_sessions: ChatSession[];
   chat_messages: ChatMessage[];
+  wiki_pages: WikiPage[];
+  thread_links: ThreadLink[];
 }
 
 const empty = (): Db => ({
@@ -49,6 +53,8 @@ const empty = (): Db => ({
   journal: [],
   chat_sessions: [],
   chat_messages: [],
+  wiki_pages: [],
+  thread_links: [],
 });
 
 const now = () => new Date().toISOString();
@@ -131,6 +137,8 @@ export class LocalStore implements Store {
         sources: [],
         created_by: 'gunes',
         close_reason: null,
+        requested_by: null,
+        wiki_slug: null,
         position: 0,
         closed_at: null,
         created_at: now(),
@@ -170,7 +178,7 @@ export class LocalStore implements Store {
       let inserted = 0;
       for (const e of events) {
         if (db.events.some((x) => x.source === e.source && x.external_id === e.external_id)) continue;
-        db.events.push({ id: randomUUID(), created_at: now(), processed: false, card_id: null, ...e });
+        db.events.push({ id: randomUUID(), created_at: now(), processed: false, card_id: null, from_me: false, thread_id: null, ...e });
         inserted++;
       }
       return { inserted, skipped: events.length - inserted };
@@ -213,9 +221,9 @@ export class LocalStore implements Store {
   async getPendingAction(id: string) {
     return this.read().pending_actions.find((a) => a.id === id) ?? null;
   }
-  async createPendingAction(a: Pick<PendingAction, 'action' | 'target_id' | 'title' | 'reason'>) {
+  async createPendingAction(a: Pick<PendingAction, 'action' | 'target_id' | 'title' | 'reason'> & { payload?: Record<string, unknown> }) {
     return this.tx((db) => {
-      const x: PendingAction = { id: randomUUID(), status: 'pending', created_at: now(), resolved_at: null, ...a };
+      const x: PendingAction = { id: randomUUID(), status: 'pending', created_at: now(), resolved_at: null, payload: {}, ...a };
       db.pending_actions.push(x);
       return x;
     });
@@ -360,6 +368,46 @@ export class LocalStore implements Store {
       const x: ChatMessage = { id: randomUUID(), created_at: now(), ...m };
       db.chat_messages.push(x);
       return x;
+    });
+  }
+
+  async searchChatMessages(query: string, limit = 30) {
+    const db = this.read();
+    const q = query.toLocaleLowerCase('tr');
+    const title = new Map(db.chat_sessions.map((s) => [s.id, s.title]));
+    return db.chat_messages
+      .filter((m) => m.content.toLocaleLowerCase('tr').includes(q))
+      .sort(byDesc('created_at'))
+      .slice(0, limit)
+      .map((m) => ({ ...m, session_title: title.get(m.session_id) ?? '' }));
+  }
+
+  async listWikiPages() {
+    return this.read().wiki_pages.sort((a, b) => a.kind.localeCompare(b.kind) || a.title.localeCompare(b.title, 'tr'));
+  }
+  async getWikiPage(slug: string) {
+    return this.read().wiki_pages.find((p) => p.slug === slug) ?? null;
+  }
+  async upsertWikiPage(p: Pick<WikiPage, 'slug' | 'title' | 'kind' | 'summary' | 'content' | 'links' | 'sources'>) {
+    return this.tx((db) => {
+      let x = db.wiki_pages.find((w) => w.slug === p.slug);
+      if (x) Object.assign(x, p, { updated_at: now() });
+      else {
+        x = { id: randomUUID(), created_at: now(), updated_at: now(), ...p };
+        db.wiki_pages.push(x);
+      }
+      return x;
+    });
+  }
+
+  async getThreadLinks(threadIds: string[]) {
+    return this.read().thread_links.filter((l) => threadIds.includes(l.thread_id));
+  }
+  async upsertThreadLink(l: Omit<ThreadLink, 'created_at'>) {
+    this.tx((db) => {
+      const x = db.thread_links.find((t) => t.thread_id === l.thread_id);
+      if (x) Object.assign(x, l);
+      else db.thread_links.push({ ...l, created_at: now() });
     });
   }
 }
