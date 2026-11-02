@@ -35,9 +35,16 @@ if (hasSupabase) {
     await getStore().listProjects();
     try {
       await getStore().listPendingActions();
-      okMark('Supabase bağlantısı ve şema tamam');
+      try {
+        await getStore().listWikiPages();
+        await getStore().getThreadLinks(['-']);
+        okMark('Supabase bağlantısı ve şema tamam');
+      } catch {
+        bad("Supabase: wiki tabloları yok → supabase/migrations/0003_attribution_wiki.sql dosyasını SQL Editor'de çalıştırın");
+        problems++;
+      }
     } catch {
-      bad("Supabase: 'pending_actions' tablosu yok → supabase/migrations/0002_pending_actions.sql dosyasını SQL Editor'de çalıştırın");
+      bad("Supabase: 'pending_actions' tablosu yok → önce 0002_pending_actions.sql, sonra 0003_attribution_wiki.sql dosyasını SQL Editor'de çalıştırın");
       problems++;
     }
   } catch (e) {
