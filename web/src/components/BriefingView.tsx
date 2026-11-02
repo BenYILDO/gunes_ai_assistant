@@ -1,5 +1,5 @@
 import { animate, motion, useMotionValue, useTransform } from 'motion/react';
-import { ArrowRight, CalendarClock, Clock, Flame, Hourglass, Mail, Sunrise, Sunset, Umbrella, Users, Zap } from 'lucide-react';
+import { ArrowRight, CalendarClock, Clock, Flame, Hourglass, Mail, Sunrise, Sunset, Umbrella, Users, Volume2, Zap } from 'lucide-react';
 import { useEffect, useMemo } from 'react';
 import type { AgendaItem } from '../lib/agenda';
 import type { Briefing, PendingAction, Status, Suggestion, Today, Weather } from '../lib/api';
@@ -62,6 +62,7 @@ interface Props {
   onOpenCard: (id: string) => void;
   onRun: (k: 'morning' | 'backfill') => void;
   onGoBoard: () => void;
+  onVoice: () => void;
 }
 
 const TILES = [
@@ -102,7 +103,17 @@ export function BriefingView(p: Props) {
               <p className="mt-2 max-w-2xl text-[15px] leading-relaxed text-ink-dim">
                 {headline ? headline.charAt(0).toLocaleUpperCase('tr') + headline.slice(1) : moodLine(now)}
               </p>
-              {briefing && <div className="mt-2 text-[11px] text-ink-faint">Brifing {relTime(briefing.created_at)} hazırlandı</div>}
+              <div className="mt-3 flex items-center gap-3">
+                <motion.button
+                  whileHover={{ y: -1 }}
+                  whileTap={{ scale: 0.96 }}
+                  onClick={p.onVoice}
+                  className="accent-gradient inline-flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold text-[#1a0f05] shadow-[0_8px_24px_-8px_rgb(var(--glow)/0.7)]"
+                >
+                  <Volume2 size={13} /> Sesli dinle
+                </motion.button>
+                {briefing && <span className="text-[11px] text-ink-faint">Brifing {relTime(briefing.created_at)} hazırlandı</span>}
+              </div>
             </div>
           </div>
 

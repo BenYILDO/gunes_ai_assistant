@@ -9,7 +9,7 @@ import { CARD_STATUSES, getStore, MEMORY_KINDS, PRIORITIES, type Card, type Memo
 import { localDate } from './scheduler.js';
 import { getWeather, setLocation } from './weather.js';
 import { listUnseen, markPresence, markSeen } from './nudges.js';
-import { closeAppWindow, daySummary, endDay } from './day.js';
+import { briefingFollowup, closeAppWindow, daySummary, endDay } from './day.js';
 
 const wrap =
   (fn: (req: Request, res: Response) => Promise<unknown>) => (req: Request, res: Response, next: NextFunction) =>
@@ -130,6 +130,14 @@ export function apiRouter() {
     setTimeout(() => closeAppWindow(), 400);
     res.json({ ok: true });
   });
+  r.post(
+    '/briefing/followup',
+    wrap(async (req, res) => {
+      const unanswered = Array.isArray(req.body?.unanswered) ? req.body.unanswered.map(String).slice(0, 10) : [];
+      const s = await briefingFollowup({ unanswered, skipped: Boolean(req.body?.skipped) });
+      res.json({ ok: true, id: s.id });
+    }),
+  );
   r.get(
     '/day/state',
     wrap(async (_req, res) => res.json({ dayEnded: await store.getState('day_ended') })),

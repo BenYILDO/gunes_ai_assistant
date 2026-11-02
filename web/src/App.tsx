@@ -18,6 +18,11 @@ import { WikiView } from './components/WikiView';
 import { BriefingView } from './components/BriefingView';
 import { Farewell } from './components/Farewell';
 import { EndOfDayPrompt } from './components/EndOfDayPrompt';
+import { VoiceBriefing } from './components/VoiceBriefing';
+import { buildScript, type Segment, type SegmentAction } from './lib/voiceScript';
+import { listener, micPreference } from './lib/listener';
+import { currentSpeech } from './lib/speech';
+import { isEcho, parseIntent, stripWake } from './lib/voiceCommands';
 import { NudgePopup } from './components/NudgePopup';
 import { Sky } from './components/Sky';
 import { SuggestionsPanel } from './components/Suggestions';
@@ -41,6 +46,8 @@ function firstOpenToday() {
   }
 }
 const SPEAK_TODAY = params.get('intro') === '1' || firstOpenToday();
+/** Günün ilk açılışında karşılamadan sonra sesli brifing otomatik başlar (?voice=1 ile zorlanır) */
+const AUTO_VOICE = params.get('voice') === '1' || (SPEAK_TODAY && params.get('voice') !== '0');
 
 function usePhase(sun?: { sunrise: string | null; sunset: string | null }): Phase {
   const forced = params.get('phase') as Phase | null;
@@ -100,6 +107,9 @@ export default function App() {
     }
   };
   const [farewell, setFarewell] = useState(false);
+  const [voiceSegs, setVoiceSegs] = useState<Segment[] | null>(null);
+  const [chatExternal, setChatExternal] = useState<{ id: number; text: string } | null>(null);
+  const autoVoiceDone = useRef(false);
   const [eodPrompt, setEodPrompt] = useState(false);
   const [chatOpen, setChatOpen] = useState(Boolean(params.get('chat')));
   const [focusSession, setFocusSession] = useState<string | null>(params.get('chat'));
@@ -134,6 +144,90 @@ export default function App() {
       window.removeEventListener('click', ask);
     };
   }, []);
+
+  // ---------- Ses: sesli brifing ve "Güneş, …" komutları
+  const sendToChat = (text: string) => {
+    setFocusSession(null);
+    setChatOpen(true);
+    setChatExternal({ id: Date.now(), text });
+  };
+
+  const startVoice = () => {
+    setView('briefing');
+    setVoiceSegs(
+      buildScript({
+        name: user ? `${user.name} ${user.title}` : '',
+        today: today.data,
+        briefing: briefing.data?.morning ?? null,
+        suggestions: suggestions.data ?? [],
+        weather: weather.data,
+        pendingApprovals: actions.data?.length ?? 0,
+      }),
+    );
+  };
+
+  const voiceAction = async (a: SegmentAction) => {
+    if (a.kind === 'card_doing') {
+      await api.updateCard(a.cardId, { status: 'doing' });
+      void board.refresh();
+      void today.refresh();
+    } else if (a.kind === 'draft') sendToChat(a.prompt);
+    else if (a.kind === 'suggestion_ok') await api.updateSuggestion(a.id, 'accepted');
+  };
+
+  const voiceExit = (r: { unanswered: string[]; skipped: boolean; completed: boolean }) => {
+    setVoiceSegs(null);
+    if (r.skipped || r.unanswered.length) {
+      // Cevapsız kaldıysa Güneş birkaç saniye sonra günlük scrum mesajı bırakır
+      setTimeout(() => {
+        void api
+          .briefingFollowup(r.unanswered, r.skipped)
+          .then(() => nudges.refresh())
+          .catch(() => undefined);
+      }, r.skipped ? 4000 : 1500);
+    }
+  };
+
+  // Mikrofon: tercih açıksa uygulama açılınca dinlemeye başla
+  useEffect(() => {
+    if (micPreference()) listener.start();
+  }, []);
+
+  // Karşılama bitince günün ilk açılışında sesli brifing
+  useEffect(() => {
+    if (intro || autoVoiceDone.current || !AUTO_VOICE || !voiceEnabledNow()) return;
+    // Gündem ve brifing ikisi de gelince başla (veriler farklı anlarda gelebilir)
+    if (!today.data || !briefing.data) return;
+    const t = setTimeout(() => {
+      if (autoVoiceDone.current) return;
+      autoVoiceDone.current = true;
+      startVoice();
+    }, 900);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [intro, today.data, briefing.data]);
+
+  // Brifing dışında: "Güneş, …" ile başlayan cümleler komut ya da sohbet olur
+  useEffect(() => {
+    if (voiceSegs || farewell) return;
+    return listener.subscribe((text, final) => {
+      if (!final || isEcho(text, currentSpeech())) return;
+      const rest = stripWake(text);
+      if (rest === null) return;
+      const intent = parseIntent(rest);
+      if (intent === 'open_board') setView('board');
+      else if (intent === 'open_briefing') setView('briefing');
+      else if (intent === 'open_wiki') setView('wiki');
+      else if (intent === 'end_day') setFarewell(true);
+      else if (intent === 'scan') void run('tracker');
+      else if (intent === 'briefing') startVoice();
+      else if (rest.length > 2) {
+        toast(`🎙️ "${rest}"`);
+        sendToChat(rest);
+      } else toast('🎙️ Buradayım, dinliyorum.');
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voiceSegs, farewell, today.data, briefing.data, suggestions.data, weather.data, actions.data]);
 
   // Mesai bitince (günde bir kez) "Günü kapatalım mı?" diye sor
   useEffect(() => {
@@ -305,7 +399,7 @@ export default function App() {
             agenda={agenda.items}
             agendaSpeech={agenda.speech}
             weather={weather.data}
-            voice={SPEAK_TODAY}
+            voice={SPEAK_TODAY && !(AUTO_VOICE && voiceEnabledNow())}
             onDone={finishIntro}
           />
         )}
@@ -362,6 +456,7 @@ export default function App() {
                   onOpenCard={setOpenCardId}
                   onRun={(k) => void run(k)}
                   onGoBoard={() => setView('board')}
+                  onVoice={() => startVoice()}
                 />
               </motion.div>
             )}
@@ -437,7 +532,12 @@ export default function App() {
         focusSession={focusSession}
         onActivity={refreshAll}
         onEndDay={() => setFarewell(true)}
+        externalMessage={chatExternal}
       />
+
+      <AnimatePresence>
+        {voiceSegs && <VoiceBriefing key="voice" segments={voiceSegs} phase={phase} onAction={voiceAction} onExit={voiceExit} />}
+      </AnimatePresence>
 
       <EndOfDayPrompt
         open={eodPrompt && !farewell}

@@ -1,3 +1,7 @@
+/**
+ * Güneş'in sesi: tarayıcının (Edge) kendi Türkçe sesleri — ücretsiz, anahtarsız.
+ * Kadın sesi tercih edilir: "Microsoft Emel Online (Natural)".
+ */
 const KEY = 'gunes.voice';
 
 export const voiceEnabled = () => {
@@ -13,23 +17,76 @@ export const setVoiceEnabled = (on: boolean) => {
   } catch {
     /* yoksay */
   }
+  if (!on) cancelSpeech();
 };
 
-/** Tarayıcının kendi Türkçe sesiyle konuşur (internet/API gerekmez). */
-export function speak(text: string) {
-  if (!voiceEnabled() || !('speechSynthesis' in window)) return;
+const MALE = /ahmet|tolga|emre|erkek|male/i;
+
+/** En iyi Türkçe kadın sesi: Emel (doğal) → diğer doğal kadın sesleri → herhangi bir Türkçe ses */
+export function pickVoice(): SpeechSynthesisVoice | null {
+  if (!('speechSynthesis' in window)) return null;
+  const tr = window.speechSynthesis.getVoices().filter((v) => v.lang.toLowerCase().startsWith('tr'));
+  return (
+    tr.find((v) => /emel/i.test(v.name) && /natural|online/i.test(v.name)) ??
+    tr.find((v) => /emel/i.test(v.name)) ??
+    tr.find((v) => /natural|online/i.test(v.name) && !MALE.test(v.name)) ??
+    tr.find((v) => !MALE.test(v.name)) ??
+    tr[0] ??
+    null
+  );
+}
+
+function whenVoices(fn: () => void) {
   const synth = window.speechSynthesis;
-  const go = () => {
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = 'tr-TR';
-    const voices = synth.getVoices().filter((v) => v.lang.toLowerCase().startsWith('tr'));
-    // Windows'ta "Microsoft Emel Online (Natural)" gibi doğal sesler varsa onları tercih et
-    u.voice = voices.find((v) => /natural|online|emel/i.test(v.name)) ?? voices[0] ?? null;
-    u.rate = 1.02;
-    u.pitch = 1.05;
-    synth.cancel();
-    synth.speak(u);
+  if (synth.getVoices().length) return fn();
+  // Ses listesi gelmezse (bazı ortamlarda) 1,5 sn sonra varsayılan sesle devam et
+  let called = false;
+  const once = () => {
+    if (called) return;
+    called = true;
+    fn();
   };
-  if (synth.getVoices().length) go();
-  else synth.addEventListener('voiceschanged', go, { once: true });
+  synth.addEventListener('voiceschanged', once, { once: true });
+  setTimeout(once, 1500);
+}
+
+let speakingText = '';
+/** Şu an okunan metin (mikrofonun Güneş'in kendi sesini komut sanmaması için) */
+export const currentSpeech = () => speakingText;
+export const isSpeaking = () => 'speechSynthesis' in window && window.speechSynthesis.speaking;
+
+export function cancelSpeech() {
+  speakingText = '';
+  if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+}
+
+/** Okur ve bitince çözülür. Sabah tonu için hız biraz düşük, perde hafif yüksek (sıcak). */
+export function speakAsync(text: string, opts: { rate?: number; pitch?: number; force?: boolean } = {}): Promise<void> {
+  return new Promise((resolve) => {
+    if ((!voiceEnabled() && !opts.force) || !('speechSynthesis' in window) || !text.trim()) return resolve();
+    whenVoices(() => {
+      const synth = window.speechSynthesis;
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'tr-TR';
+      u.voice = pickVoice();
+      u.rate = opts.rate ?? 0.98;
+      u.pitch = opts.pitch ?? 1.08;
+      speakingText = text;
+      const done = () => {
+        if (speakingText === text) speakingText = '';
+        resolve();
+      };
+      u.onend = done;
+      u.onerror = done;
+      synth.cancel();
+      synth.speak(u);
+      // Bazı tarayıcılar onend'i kaçırır: güvenlik zaman aşımı
+      setTimeout(done, Math.max(4000, text.length * 110));
+    });
+  });
+}
+
+/** Ateşle ve unut */
+export function speak(text: string) {
+  void speakAsync(text);
 }

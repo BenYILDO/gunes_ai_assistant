@@ -128,8 +128,11 @@ body {
     0 18px 50px -20px rgb(0 0 0 / 0.55);
 }
 
-.hud-corners {
-  position: relative;
+/* Katman içinde: Tailwind'in fixed/absolute sınıfları bunu ezebilsin */
+@layer components {
+  .hud-corners {
+    position: relative;
+  }
 }
 .hud-corners::before,
 .hud-corners::after {

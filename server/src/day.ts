@@ -121,3 +121,66 @@ export function closeAppWindow() {
     return false;
   }
 }
+
+/** Önceki iş günü (YYYY-MM-DD, yerel) */
+function prevWorkday(from = new Date()) {
+  const d = new Date(from);
+  for (let i = 0; i < 7; i++) {
+    d.setDate(d.getDate() - 1);
+    const wd = ((d.getDay() + 6) % 7) + 1;
+    if (config.schedule.workDays.includes(wd)) return localDate(d.toISOString())!;
+  }
+  return localDate(new Date(from.getTime() - 864e5).toISOString())!;
+}
+
+/**
+ * Sesli brifing atlandıysa ya da sorular cevapsız kaldıysa: günlük scrum mesajı
+ * (dün ne yapıldı, bugün ne var, neyi es geçmemeli) — modelsiz, anında.
+ */
+export async function briefingFollowup(opts: { unanswered: string[]; skipped: boolean }) {
+  const store = getStore();
+  const today = localDate(new Date().toISOString())!;
+  const yesterday = prevWorkday();
+  const [cards, events] = await Promise.all([store.listCards({ includeDone: true }), store.listEvents({ sinceDays: 2, limit: 1000 })]);
+  const on = (iso: string | null, d: string) => Boolean(iso) && localDate(iso) === d;
+  const open = cards.filter((c) => c.status !== 'done');
+  const closedY = cards.filter((c) => c.status === 'done' && on(c.closed_at, yesterday));
+  const movedY = open.filter((c) => on(c.updated_at, yesterday) && !on(c.created_at, yesterday)).slice(0, 4);
+  const doing = open.filter((c) => c.status === 'doing').slice(0, 4);
+  const critical = open.filter((c) => c.priority === 'critical' || (c.due_date && c.due_date <= today)).slice(0, 4);
+  const meetings = events
+    .filter((e) => e.source === 'calendar' && localDate(e.occurred_at) === today && new Date(e.occurred_at).getTime() > Date.now() - 15 * 60_000)
+    .sort((a, b) => a.occurred_at.localeCompare(b.occurred_at));
+  const t = (iso: string) => new Date(iso).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', timeZone: config.timezone });
+  const id = (cid: string) => `[${cid.slice(0, 8)}]`;
+
+  const lines: string[] = [];
+  lines.push(
+    opts.skipped
+      ? `${config.userTitle ? `${config.userName} ${config.userTitle}` : config.userName}, brifingi dinlemeden geçtiniz; sorun değil 🙂 Kısa bir günlük scrum bırakıyorum:`
+      : 'Brifingde birkaç soruma cevap alamadım; kısa bir günlük scrum bırakıyorum:',
+  );
+  lines.push('', '**Dün**');
+  if (closedY.length) closedY.slice(0, 4).forEach((c) => lines.push(`- ✅ ${c.title}`));
+  if (movedY.length) movedY.forEach((c) => lines.push(`- ↗️ ${c.title} — ilerledi`));
+  if (!closedY.length && !movedY.length) lines.push('- Panoda kayda değer bir hareket olmadı.');
+  lines.push('', '**Bugün**');
+  meetings.slice(0, 3).forEach((m) => lines.push(`- 📅 ${t(m.occurred_at)} — ${m.subject ?? m.summary}`));
+  doing.forEach((c) => lines.push(`- 🔄 ${c.title} ${id(c.id)} (devam ediyor)`));
+  critical.filter((c) => !doing.includes(c)).forEach((c) => lines.push(`- 🔥 ${c.title} ${id(c.id)}${c.requested_by ? ` — ${c.requested_by}` : ''}`));
+  if (!meetings.length && !doing.length && !critical.length) lines.push('- Acil bir şey görünmüyor.');
+  if (opts.unanswered.length) {
+    lines.push('', '**Es geçmeyelim**');
+    opts.unanswered.slice(0, 5).forEach((u) => lines.push(`- ${u}`));
+  }
+  lines.push(
+    '',
+    meetings.length
+      ? `${t(meetings[0].occurred_at)} toplantısına hazır mısınız? İsterseniz önce ${critical[0] ? `"${critical[0].title}" ile` : 'en kritik işle'} başlayalım.`
+      : critical[0]
+        ? `"${critical[0].title}" ile başlayalım mı?`
+        : 'Hangi işle başlamak istersiniz?',
+  );
+  const { createNudge } = await import('./nudges.js');
+  return createNudge(store, 'Günlük scrum', lines.join('\n'));
+}

@@ -16,6 +16,8 @@ interface Props {
   focusSession?: string | null;
   /** Kullanıcı günü kapatmak istediğinde ("bugünlük bu kadar") */
   onEndDay?: () => void;
+  /** Sesli komut ya da brifingden gelen mesaj (açılınca gönderilir) */
+  externalMessage?: { id: number; text: string } | null;
 }
 
 interface LiveMsg extends Omit<ChatMessage, 'id' | 'created_at'> {
@@ -30,7 +32,7 @@ const STARTERS = [
   'Rakiplerimiz depo otomasyonunda neler yapıyor? Araştır',
 ];
 
-export function ChatPanel({ open, phase, userName, onClose, onActivity, focusSession, onEndDay }: Props) {
+export function ChatPanel({ open, phase, userName, onClose, onActivity, focusSession, onEndDay, externalMessage }: Props) {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<LiveMsg[]>([]);
@@ -125,6 +127,15 @@ export function ChatPanel({ open, phase, userName, onClose, onActivity, focusSes
       if (usedTools) onActivity();
     }
   };
+
+  const lastExternal = useRef<number | null>(null);
+  useEffect(() => {
+    if (!open || !externalMessage || lastExternal.current === externalMessage.id) return;
+    lastExternal.current = externalMessage.id;
+    const t = setTimeout(() => void send(externalMessage.text), 350);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, externalMessage]);
 
   return (
     <AnimatePresence>

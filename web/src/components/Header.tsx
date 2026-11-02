@@ -9,6 +9,7 @@ import { fmtTime, greetingOf, relTime, type Phase } from '../lib/time';
 import { SunCore } from './SunCore';
 import { Button } from './ui';
 import { UsageMeter } from './UsageMeter';
+import { MicButton } from './MicButton';
 
 export type View = 'briefing' | 'board' | 'wiki' | 'memory' | 'history';
 
@@ -95,6 +96,7 @@ export function Header({ phase, status, view, onView, onRun, onChat, onReplayInt
 
         <WeatherChip weather={weather} />
         <UsageMeter usage={status?.usage ?? null} />
+        <MicButton />
 
         <Button
           variant="ghost"
