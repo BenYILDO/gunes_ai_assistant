@@ -461,7 +461,8 @@ export default function App() {
                     const r = await voiceTest(user ? `${user.name} ${user.title}` : '');
                     if (!r.ok) toast('Bu tarayıcı sesli okumayı desteklemiyor', 'error');
                     else if (!r.turkish.length) toast('Türkçe ses bulunamadı — Windows Ayarlar › Zaman ve dil › Konuşma’dan Türkçe ses ekleyin', 'error');
-                    else toast(`🔊 ${r.voice}${/emel/i.test(r.voice ?? '') ? '' : ' (Emel bulunamadı)'} · ses gelmiyorsa ses karıştırıcısında Edge düzeyini kontrol edin`);
+                    else if (!r.started) toast(`Ses motoru başlamadı${r.error ? ` (${r.error})` : ''} — Güneş penceresini kapatıp masaüstü simgesinden yeniden açın`, 'error');
+                    else toast(`🔊 ${r.voice}${/emel/i.test(r.voice ?? '') ? '' : ' (Emel bulunamadı)'} · konuşuyor; duymuyorsanız ses karıştırıcısına bakın`);
                   }}
                 />
               </motion.div>

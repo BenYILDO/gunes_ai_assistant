@@ -72,7 +72,7 @@ class Listener {
     rec.onend = () => {
       this.rec = null;
       if (this.wanted) setTimeout(() => this.wanted && this.start(), 300);
-      else if (this.state !== 'denied') this.setState('off');
+      else if (!this.paused && this.state !== 'denied') this.setState('off');
     };
     this.rec = rec;
     try {
@@ -82,7 +82,27 @@ class Listener {
     }
   }
 
+  /** Güneş konuşurken geçici duraklatma (tercih değişmez) */
+  private paused = false;
+  pause() {
+    if (!this.wanted || this.paused) return;
+    this.paused = true;
+    this.wanted = false;
+    try {
+      this.rec?.abort();
+    } catch {
+      /* yoksay */
+    }
+    this.rec = null;
+  }
+  resume() {
+    if (!this.paused) return;
+    this.paused = false;
+    this.start();
+  }
+
   stop() {
+    this.paused = false;
     this.wanted = false;
     try {
       localStorage.setItem(MIC_KEY, 'off');
@@ -101,3 +121,7 @@ class Listener {
 
 export type ListenState = 'off' | 'listening' | 'denied' | 'unsupported';
 export const listener = new Listener();
+
+// Güneş konuşurken mikrofonu duraklat, bitince devam et
+import { onSpeaking } from './speech';
+onSpeaking((speaking) => (speaking ? listener.pause() : listener.resume()));

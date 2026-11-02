@@ -56,32 +56,80 @@ export const currentSpeech = () => speakingText;
 export const isSpeaking = () => 'speechSynthesis' in window && window.speechSynthesis.speaking;
 
 export function cancelSpeech() {
+  token++;
   speakingText = '';
   if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+  speakHooks.forEach((h) => h(false));
 }
 
-/** Okur ve bitince çözülür. Sabah tonu için hız biraz düşük, perde hafif yüksek (sıcak). */
+/** Konuşma başlarken/bitince haber ver (mikrofon bu sırada duraklar; Edge'de tanıma açıkken ses çıkmayabiliyor) */
+const speakHooks = new Set<(speaking: boolean) => void>();
+export function onSpeaking(h: (speaking: boolean) => void) {
+  speakHooks.add(h);
+  return () => {
+    speakHooks.delete(h);
+  };
+}
+
+let token = 0;
+let lastStartAt = 0;
+let lastError = '';
+
+/** Tek bir cümleyi okur. */
+function utter(text: string, rate: number, pitch: number) {
+  return new Promise<void>((resolve) => {
+    const synth = window.speechSynthesis;
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'tr-TR';
+    const v = pickVoice();
+    if (v) u.voice = v;
+    u.rate = rate;
+    u.pitch = pitch;
+    u.volume = 1;
+    let finished = false;
+    const done = () => {
+      if (finished) return;
+      finished = true;
+      resolve();
+    };
+    u.onstart = () => {
+      lastStartAt = Date.now();
+    };
+    u.onend = done;
+    u.onerror = (e) => {
+      lastError = (e as SpeechSynthesisErrorEvent).error ?? 'bilinmeyen';
+      done();
+    };
+    synth.speak(u);
+    synth.resume(); // Chromium bazen kuyruğu duraklatılmış bırakır
+    setTimeout(done, Math.max(3500, text.length * 120)); // onend gelmezse
+  });
+}
+
+/** Okur ve bitince çözülür. Metni cümlelere böler (Chromium uzun metinleri yarıda kesebiliyor). */
 export function speakAsync(text: string, opts: { rate?: number; pitch?: number; force?: boolean } = {}): Promise<void> {
   return new Promise((resolve) => {
     if ((!voiceEnabled() && !opts.force) || !('speechSynthesis' in window) || !text.trim()) return resolve();
-    whenVoices(() => {
+    whenVoices(async () => {
       const synth = window.speechSynthesis;
-      const u = new SpeechSynthesisUtterance(text);
-      u.lang = 'tr-TR';
-      u.voice = pickVoice();
-      u.rate = opts.rate ?? 0.98;
-      u.pitch = opts.pitch ?? 1.08;
+      const my = ++token;
+      if (synth.speaking || synth.pending) {
+        synth.cancel();
+        await new Promise((r) => setTimeout(r, 120)); // iptalin hemen ardından speak() yutulabiliyor
+      }
       speakingText = text;
-      const done = () => {
-        if (speakingText === text) speakingText = '';
-        resolve();
-      };
-      u.onend = done;
-      u.onerror = done;
-      synth.cancel();
-      synth.speak(u);
-      // Bazı tarayıcılar onend'i kaçırır: güvenlik zaman aşımı
-      setTimeout(done, Math.max(4000, text.length * 110));
+      speakHooks.forEach((h) => h(true));
+      await new Promise((r) => setTimeout(r, 150)); // mikrofon dursun
+      const parts = text.match(/[^.!?…]+[.!?…]*/g)?.map((p) => p.trim()).filter(Boolean) ?? [text];
+      for (const p of parts) {
+        if (my !== token) break; // yeni bir konuşma başladı / iptal edildi
+        await utter(p, opts.rate ?? 0.98, opts.pitch ?? 1.08);
+      }
+      if (my === token) {
+        speakingText = '';
+        speakHooks.forEach((h) => h(false));
+      }
+      resolve();
     });
   });
 }
@@ -97,6 +145,10 @@ export async function voiceTest(name: string) {
   await new Promise<void>((r) => whenVoices(r));
   const turkish = window.speechSynthesis.getVoices().filter((v) => v.lang.toLowerCase().startsWith('tr')).map((v) => v.name);
   const voice = pickVoice()?.name ?? null;
+  const t0 = Date.now();
+  lastError = '';
   void speakAsync(`Merhaba ${name}, sesimi duyuyor musunuz? Ben Güneş.`, { force: true });
-  return { ok: true, voice, turkish };
+  await new Promise((r) => setTimeout(r, 2500));
+  const started = lastStartAt >= t0;
+  return { ok: true, voice, turkish, started, error: lastError };
 }
