@@ -76,6 +76,8 @@ export interface Today {
 export interface WikiPageMeta { id: string; slug: string; title: string; kind: string; summary: string; links: string[]; updated_at: string }
 export interface WikiPageFull extends WikiPageMeta { content: string; sources: SourceRef[] }
 
+export interface Nudge { id: string; title: string; message: string; created_at: string }
+
 export interface Briefing { id: string; kind: 'morning' | 'tracker'; headline: string; content: string; stats: Record<string, number>; created_at: string }
 export interface Memory {
   id: string;
@@ -163,7 +165,10 @@ export const api = {
   resolveAction: (id: string, decision: 'approve' | 'reject') => req(`/actions/${id}/${decision}`, json('POST')),
   updateSuggestion: (id: string, status: string, lesson?: string) =>
     req(`/suggestions/${id}`, json('PATCH', { status, lesson })),
-  run: (kind: 'morning' | 'tracker' | 'backfill') => req(`/run/${kind}`, json('POST')),
+  run: (kind: 'morning' | 'tracker' | 'backfill' | 'wiki') => req(`/run/${kind}`, json('POST')),
+  nudges: () => req<Nudge[]>('/nudges'),
+  seenNudge: (id: string) => req(`/nudges/${id}/seen`, json('POST')),
+  presence: (visible: boolean) => req('/presence', json('POST', { visible })),
   refreshUsage: () => req<Usage | null>('/usage/refresh', json('POST')),
   runs: () => req<AgentRun[]>('/runs'),
   memory: () => req<{ memories: Memory[]; journal: JournalEntry[] }>('/memory'),

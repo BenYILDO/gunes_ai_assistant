@@ -17,6 +17,8 @@ interface Props {
   agenda: AgendaItem[];
   agendaSpeech: string;
   weather: Weather | null;
+  /** Sesli karşılama yapılsın mı (günün ilk açılışı) */
+  voice?: boolean;
   onDone: () => void;
 }
 
@@ -77,7 +79,7 @@ function Letters({
   );
 }
 
-export function Intro({ phase, userName, userTitle, headline, bootLines, agenda, agendaSpeech, weather, onDone }: Props) {
+export function Intro({ phase, userName, userTitle, headline, bootLines, agenda, agendaSpeech, weather, voice = true, onDone }: Props) {
   const [stage, setStage] = useState(0);
   const hello = `${greetingOf()}, `;
   const name = `${userName} ${userTitle}`;
@@ -88,13 +90,14 @@ export function Intro({ phase, userName, userTitle, headline, bootLines, agenda,
   const lines = useMemo(() => bootLines.slice(0, 5), [bootLines]);
 
   useEffect(() => {
-    const greet = 2900 + lines.length * 380;
+    const greet = 3200 + lines.length * 520;
     const agendaAt = greet + greeting.length * 32 + 1100;
     const times = [600, 2300, greet, agendaAt];
     const ts = times.map((t, i) => setTimeout(() => setStage(i + 1), t));
     // Selamlama göründükten sonra sesli karşılama + günün gündemi
-    ts.push(setTimeout(() => speak(`${greeting}. ${sub} ${agendaSpeech}`), greet + 500));
-    const finish = setTimeout(onDone, agenda.length ? agendaAt + agenda.length * 450 + 6000 : greet + 5200);
+    if (voice) ts.push(setTimeout(() => speak(`${greeting}. ${sub} ${agendaSpeech}`), greet + 500));
+    // Okumaya zaman kalsın: gündem görünür olduktan sonra ~12 sn bekler (Başlayalım ile geçilebilir)
+    const finish = setTimeout(onDone, agenda.length ? agendaAt + agenda.length * 450 + 12000 : greet + 9000);
     const key = (e: KeyboardEvent) => (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') && onDone();
     window.addEventListener('keydown', key);
     return () => {
@@ -165,14 +168,14 @@ export function Intro({ phase, userName, userTitle, headline, bootLines, agenda,
                 className="flex items-center gap-2 py-[3px]"
                 initial={{ opacity: 0, x: -12 }}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: i * 0.36, duration: 0.45 }}
+                transition={{ delay: i * 0.5, duration: 0.5 }}
               >
                 <motion.span
                   className="inline-block h-1.5 w-1.5 rounded-full"
                   style={{ background: 'var(--accent)', boxShadow: '0 0 8px rgb(var(--glow))' }}
                   initial={{ scale: 0 }}
                   animate={{ scale: [0, 1.6, 1] }}
-                  transition={{ delay: i * 0.36 + 0.2, duration: 0.4 }}
+                  transition={{ delay: i * 0.5 + 0.25, duration: 0.4 }}
                 />
                 <span>{l}</span>
               </motion.div>

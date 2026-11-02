@@ -12,6 +12,8 @@ interface Props {
   userName: string;
   onClose: () => void;
   onActivity: () => void;
+  /** Açılınca gösterilecek sohbet (ör. Güneş'in başlattığı) */
+  focusSession?: string | null;
 }
 
 interface LiveMsg extends Omit<ChatMessage, 'id' | 'created_at'> {
@@ -26,7 +28,7 @@ const STARTERS = [
   'Rakiplerimiz depo otomasyonunda neler yapıyor? Araştır',
 ];
 
-export function ChatPanel({ open, phase, userName, onClose, onActivity }: Props) {
+export function ChatPanel({ open, phase, userName, onClose, onActivity, focusSession }: Props) {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<LiveMsg[]>([]);
@@ -54,6 +56,11 @@ export function ChatPanel({ open, phase, userName, onClose, onActivity }: Props)
     setSessionId(id);
     setMessages(await api.chatMessages(id));
   };
+
+  useEffect(() => {
+    if (open && focusSession) void openSession(focusSession);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, focusSession]);
 
   const newChat = () => {
     abortRef.current?.abort();

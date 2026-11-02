@@ -128,9 +128,34 @@ ${opts.events || '(yok)'}
    - Kritik cümleleri alıntı olarak aynen koru; çelişki varsa "⚠️ Çelişki:" diye yaz.
    Hafıza (remember) sadece Güneş'in kendisi için dersler, kullanıcı tercihleri ve kalıplar içindir; proje/kişi bilgisi wiki'ye gider.
 ${briefingRule}
-6. Son olarak write_journal ile 2-4 cümlelik bir günlük kaydı yaz (ne gördüm, ne yaptım, hangi wiki sayfalarını güncelledim, kullanıcıya ne sordum).
+${opts.kind !== 'backfill' ? `5b. Kullanıcıya seslen (nudge_user, EN FAZLA 2): Bu çalışmada kullanıcının hemen bilmesi gereken somut, eyleme dönük bir gelişme varsa (beklenen dönüş geldi, kritik/bugün tarihli bir iş, bir işi ilerletme fırsatı, 2+ gündür cevapsız önemli bir istek) kısa ve sıcak bir mesajla sohbet başlat; mesaj bir öneri sorusuyla bitsin ("Bu işi ilerletelim mi?", "Cevap taslağı hazırlayayım mı?"). Rutin gelişmeler için seslenme, brifinge yaz.\n` : ''}6. Son olarak write_journal ile 2-4 cümlelik bir günlük kaydı yaz (ne gördüm, ne yaptım, hangi wiki sayfalarını güncelledim, kullanıcıya ne sordum).
 
 Kurallar: Türkçe yaz. Kullanıcıya "${who()}" diye hitap et. Mail/mesaj GÖNDERME. Bittiğinde tek satırlık bir özet ver.`;
+}
+
+export function wikiBuildPrompt(opts: { board: string; wiki: string; events: string; part: number; total: number }) {
+  return `Sen Güneş'sin. Görevin: daha önce taranıp kaydedilmiş mail/Teams olaylarından WİKİ kurmak (bölüm ${opts.part}/${opts.total}). Outlook/Teams'e GİTME; sadece aşağıdaki kayıtları kullan.
+
+# PANO
+${opts.board}
+
+# WİKİ KATALOĞU (şu anki hali)
+${opts.wiki}
+
+# KAYITLI OLAYLAR (bu bölüm)
+(★ = kullanıcının kendi mesajı)
+${opts.events}
+
+# GÖREV
+1. Bu olaylarda geçen her anlamlı PROJE/İŞ KONUSU için bir project sayfası, işin içinde olan her KİŞİ için bir person sayfası oluştur ya da güncelle.
+   - Sayfa varsa önce wiki_read ile oku ve mevcut bilgiyi KORUYARAK genişlet (wiki_write içeriğin tamamını yazar).
+   - project: Amaç · Durum · Kimler ([[kişi]]) · Zaman çizelgesi (tarih — olay — kaynak) · İlgili yazışmalar (dizi kimlikleri) · Açık sorular
+   - person: Rol/kurum · Hangi işler ([[proje]]) · İletişim notları
+   - Kritik cümleleri (söz, tarih, rakam, karar) alıntı olarak AYNEN koru. Çelişki varsa "⚠️ Çelişki:" yaz. Farklı yer/kurum/kişi içeren işleri aynı sayfada karıştırma.
+2. Bir konuşma dizisi (dizi:) açıkça bir projeye aitse link_thread ile bağla.
+3. Panodaki ilgili kartları update_card(id, wiki_slug=...) ile proje sayfasına bağla. Kart AÇMA, TAŞIMA, öneri bırakma, kullanıcıya seslenme.
+4. ${opts.part === opts.total ? 'Bu SON bölüm: "genel-bakis" (overview) sayfasını aktif projeler ve sık yazışılan kişilerle oluştur/güncelle, sonra write_journal ile "Wiki kurulumu: …" diye kısa bir kayıt yaz.' : 'Bu son bölüm değil; günlük yazma.'}
+Bittiğinde tek satır özet ver.`;
 }
 
 export function notifierPrompt(chatId: string, text: string) {

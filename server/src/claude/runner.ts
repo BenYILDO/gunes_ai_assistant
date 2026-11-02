@@ -55,12 +55,14 @@ export function toolPreset(preset: ToolPreset) {
   const forbidden = [...M365_FORBIDDEN_TOOLS.map(m365), 'Bash', 'PowerShell', 'Edit', 'Write', 'NotebookEdit'];
   /** Sadece sohbete açık araçlar: ajanlar tarama başlatıp döngüye girmesin, silme önermesin. */
   const chatOnly = [gunesTool('start_scan'), gunesTool('propose_deletion')];
+  /** Sohbette Güneş zaten konuşuyor; kendine dürtme göndermesin */
+  const agentOnly = [gunesTool('nudge_user')];
   switch (preset) {
     case 'collector':
       return {
         builtins: '',
         allowed: [...read, gunesTool('record_events'), gunesTool('search_events')],
-        disallowed: [...forbidden, ...chatOnly, ...M365_DRAFT_TOOLS.map(m365), m365('teams_send_chat_message')],
+        disallowed: [...forbidden, ...chatOnly, ...agentOnly, ...M365_DRAFT_TOOLS.map(m365), m365('teams_send_chat_message')],
       };
     case 'planner':
       return {
@@ -72,7 +74,7 @@ export function toolPreset(preset: ToolPreset) {
       return {
         builtins: 'WebSearch,WebFetch',
         allowed: [...read, ...M365_DRAFT_TOOLS.map(m365), GUNES_ALL, 'WebSearch', 'WebFetch'],
-        disallowed: [...forbidden, m365('teams_send_chat_message')],
+        disallowed: [...forbidden, ...agentOnly, m365('teams_send_chat_message')],
       };
     case 'notifier':
       return {

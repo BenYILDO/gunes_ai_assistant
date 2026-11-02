@@ -10,6 +10,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import { buildBoardContext, ensureSoul, formatEvents, STATUS_TR } from './agents/soul.js';
 import { extractLinks, slugify } from './wiki.js';
+import { createNudge, unseenIds } from './nudges.js';
 import { config } from './config.js';
 import { getStore, type Card, type CardStatus, type SourceRef } from './store/index.js';
 
@@ -331,6 +332,24 @@ server.registerTool(
       return ok('Bu öneri zaten açık, tekrar eklenmedi.');
     await store.createSuggestion({ kind: a.kind, title: a.title, body: a.body ?? null, card_id: card?.id ?? null });
     return ok('Öneri eklendi.');
+  },
+);
+
+server.registerTool(
+  'nudge_user',
+  {
+    description:
+      "Kullanıcıya KENDİLİĞİNDEN seslenir: yeni bir sohbet başlatır ve ekranda pop-up/Windows bildirimi olarak görünür. SADECE somut ve eyleme dönük bir gelişme varsa kullan (örn. beklenen dönüş geldi, bir iş ilerletilebilir, söz verilen tarih yaklaştı). Mesaj kısa, sıcak ve bir soru ile bitsin: 'Bu işi ilerletelim mi?', 'Bir cevap taslağı hazırlayayım mı?'. Bir çalışmada EN FAZLA 2.",
+    inputSchema: {
+      title: z.string().max(70).describe('Bildirim başlığı, örn: "Bahadır Bey dönüş yaptı"'),
+      message: z.string().max(700).describe('Sohbetin ilk mesajı (markdown); ilgili kartın kısa id’sini [abcd1234] biçiminde yaz'),
+    },
+  },
+  async ({ title, message }) => {
+    const open = await unseenIds(store);
+    if (open.length >= 5) return ok('Kullanıcının okumadığı 5 bildirim var; yenisini ekleme, brifinge yaz.');
+    await createNudge(store, title, message);
+    return ok('Kullanıcıya seslenildi (pop-up/bildirim).');
   },
 );
 

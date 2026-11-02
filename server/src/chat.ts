@@ -5,6 +5,7 @@ import { runClaude, type RunResult } from './claude/runner.js';
 import { chatSystemContext } from './agents/prompts.js';
 import { buildBoardContext, buildMemoryContext, buildWikiIndex, ensureSoul } from './agents/soul.js';
 import { exportWiki } from './wiki.js';
+import { markSeen } from './nudges.js';
 import { getStore } from './store/index.js';
 
 const TOOL_TR: Record<string, string> = {
@@ -57,7 +58,11 @@ export async function chatHandler(req: Request, res: Response) {
 
   await ensureSoul(store);
   let session = req.body?.sessionId ? await store.getChatSession(String(req.body.sessionId)) : null;
-  const isNew = !session;
+  // Güneş'in kendiliğinden başlattığı sohbet: Claude tarafında henüz oturum yok, ilk mesaj Güneş'in
+  const prior = session ? await store.listChatMessages(session.id) : [];
+  const seeded = Boolean(session) && !prior.some((m) => m.role === 'user');
+  const isNew = !session || seeded;
+  if (seeded) await markSeen(session!.id, store);
   if (!session) session = await store.createChatSession(randomUUID(), message.slice(0, 60));
   send({ type: 'session', id: session.id, title: session.title });
   await store.addChatMessage({ session_id: session.id, role: 'user', content: message, tools: [] });
@@ -65,7 +70,11 @@ export async function chatHandler(req: Request, res: Response) {
   const tools: string[] = [];
   const run = async (fresh: boolean): Promise<RunResult> => {
     const prompt = fresh
-      ? `${chatSystemContext(await buildMemoryContext(store, { compact: true }), await buildBoardContext(store), await buildWikiIndex(store))}\n\n---\n\n${message}`
+      ? `${chatSystemContext(await buildMemoryContext(store, { compact: true }), await buildBoardContext(store), await buildWikiIndex(store))}\n\n---\n\n${
+          seeded
+            ? `(Bu sohbeti SEN başlattın; kullanıcıya şunu yazmıştın:)\n"${prior.map((m) => m.content).join('\n')}"\n\nKullanıcının cevabı:\n${message}`
+            : message
+        }`
       : message;
     return runClaude({
       prompt,

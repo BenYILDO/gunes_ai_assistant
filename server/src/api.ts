@@ -8,6 +8,7 @@ import { getUsage, refreshUsage } from './usage.js';
 import { CARD_STATUSES, getStore, MEMORY_KINDS, PRIORITIES, type Card, type MemoryKind, type PendingAction } from './store/index.js';
 import { localDate } from './scheduler.js';
 import { getWeather, setLocation } from './weather.js';
+import { listUnseen, markPresence, markSeen } from './nudges.js';
 
 const wrap =
   (fn: (req: Request, res: Response) => Promise<unknown>) => (req: Request, res: Response, next: NextFunction) =>
@@ -113,6 +114,23 @@ export function apiRouter() {
       });
     }),
   );
+
+  // ---------- Güneş'in seslenmeleri (pop-up)
+  r.get(
+    '/nudges',
+    wrap(async (_req, res) => res.json(await listUnseen(store))),
+  );
+  r.post(
+    '/nudges/:id/seen',
+    wrap(async (req, res) => {
+      await markSeen(p(req), store);
+      res.json({ ok: true });
+    }),
+  );
+  r.post('/presence', (req, res) => {
+    markPresence(Boolean(req.body?.visible));
+    res.json({ ok: true });
+  });
 
   // ---------- Konum ve hava
   r.get(
@@ -312,7 +330,7 @@ export function apiRouter() {
     '/run/:kind',
     wrap(async (req, res) => {
       const k = String(req.params.kind) as JobKind;
-      if (!['morning', 'tracker', 'backfill'].includes(k)) return void res.status(400).json({ error: `Bilinmeyen: ${k}` });
+      if (!['morning', 'tracker', 'backfill', 'wiki'].includes(k)) return void res.status(400).json({ error: `Bilinmeyen: ${k}` });
       void runJob(k);
       res.json({ ok: true, queued: k });
     }),

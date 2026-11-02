@@ -78,12 +78,16 @@ Masaüstündeki **Güneş** kısayoluna tıklayın, sonra panodaki **"Geçmişi 
 
 | Ne zaman | Ne olur |
 |---|---|
-| Bilgisayar açılınca | Sunucu arka planda başlar, Güneş penceresi açılır, günün ilk açılışında karşılama animasyonu oynar |
+| Bilgisayar açılınca | Sunucu arka planda başlar, Güneş penceresi açılır, karşılama ekranı her açılışta oynar (sesli karşılama günün ilk açılışında) |
 | 08:30 (ya da açılışta, kaçırıldıysa) | Sabah çalışması: son 24 saat taranır, brifing yazılır, Teams'e özet gider |
 | Mesai içinde 2 saatte bir | Takip: yeni gelişme varsa kartlar güncellenir, öneriler eklenir |
 | Her an | **Güneş'e yaz** ile sohbet. Kart açtırabilir, mail aratabilir, taslak hazırlatabilir, araştırma yaptırabilirsiniz |
 
 **Bilgi birikimi — Wiki:** Güneş her taramada dokunduğu projeler ve kişiler için wiki sayfaları açar ya da günceller (Karpathy'nin *LLM Wiki* deseni). Sayfalar `[[bağlantı]]` ile birbirine bağlıdır ve her iddianın kaynağı yazılıdır. Bir mail dizisi ya da Teams sohbeti bir projeye bağlandığında, o diziden gelen her yeni mesaj otomatik olarak o projeye işlenir. Sohbette *"bu Teams grubunu Akaryakıt projesine bağla"* diyebilirsiniz. Wiki, `data\wiki\` klasörüne de markdown olarak yazılır; bu klasörü **Obsidian** ile açıp grafik görünümünde inceleyebilirsiniz.
+
+**Güneş kendisi seslenir:** Arka plandaki taramalarda (mesai içinde 2 saatte bir; `GUNES_TRACKER_EVERY_HOURS=1` ile saatte bir) kayda değer bir gelişme bulursa size bir sohbet başlatır: *"Selin Hanım teklifi gönderdi, kartı ilerletelim mi?"*. Pencere açıksa sağ altta pop-up, kapalıysa Windows bildirimi görünür. **Konuşalım** dediğinizde sohbet o mesajdan devam eder.
+
+**Wiki'yi geçmişten kurmak:** Daha önce taranmış kayıtlardan wiki oluşturmak için Outlook'u yeniden taramanız gerekmez. **Wiki** sekmesindeki ya da **Geçmiş** sekmesindeki **"Wiki'yi kayıtlardan kur"** butonunu kullanın.
 
 **Emin değilse sorar:** Yeni bir mesaj var olan bir kartla aynı iş gibi görünüyor ama Güneş emin değilse birleştirmez; panoda **"Aynı iş mi?"** diye sorar. Sizin gönderdiğiniz mail ve mesajlar ("eklendi", "gönderdim" gibi) ilerleme bildirimi sayılır ve ilgili kart güncellenir.
 

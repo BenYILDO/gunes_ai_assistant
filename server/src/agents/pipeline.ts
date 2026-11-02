@@ -1,13 +1,14 @@
 import { config } from '../config.js';
 import { usageIsHigh } from '../usage.js';
 import { getWeather } from '../weather.js';
+import { announceNew, unseenIds } from '../nudges.js';
 import { runClaude, type RunnerEvent } from '../claude/runner.js';
 import { getStore } from '../store/index.js';
-import { collectorPrompt, notifierPrompt, plannerPrompt } from './prompts.js';
+import { collectorPrompt, notifierPrompt, plannerPrompt, wikiBuildPrompt } from './prompts.js';
 import { buildBoardContext, buildMemoryContext, buildWikiIndex, ensureSoul, formatEvents } from './soul.js';
 import { exportWiki } from '../wiki.js';
 
-export type JobKind = 'morning' | 'tracker' | 'backfill';
+export type JobKind = 'morning' | 'tracker' | 'backfill' | 'wiki';
 
 /** Arayüzün canlı gösterdiği çalışma durumu. */
 export const runState = {
@@ -46,6 +47,7 @@ const toolLabel = (name: string) => {
     link_thread: 'Yazışmayı projeye bağlıyor',
     wiki_read: 'Wiki sayfasını okuyor',
     wiki_write: 'Wiki\'yi güncelliyor',
+    nudge_user: 'Size sesleniyor',
   };
   return map[t] ?? t;
 };
@@ -85,7 +87,7 @@ async function collect(from: Date, to: Date, includeCalendar: boolean, label = '
   return res;
 }
 
-async function plan(kind: JobKind) {
+async function plan(kind: Exclude<JobKind, 'wiki'>) {
   // Büyük birikimlerde planlayıcı birkaç tur çalışır (her turda en fazla 120 olay).
   for (let round = 0; round < 6; round++) {
     const events = await store.listEvents({ unprocessed: true, limit: 120 });
@@ -118,6 +120,44 @@ async function plan(kind: JobKind) {
   const left = await store.listEvents({ unprocessed: true, limit: 500 });
   const stale = left.filter((e) => Date.now() - new Date(e.created_at).getTime() > 3 * 864e5);
   if (stale.length) await store.updateEvents(stale.map((e) => e.id), { processed: true });
+}
+
+/** Wiki'yi kayıtlı olaylardan kurar (Outlook/Teams'e gitmez). */
+async function buildWiki() {
+  const events = await store.listEvents({ sinceDays: config.backfillDays + 15, limit: 5000 });
+  if (!events.length) {
+    log('Kayıtlı olay yok; önce bir tarama gerekli.');
+    return;
+  }
+  // Aynı karta / diziye / projeye ait olaylar yan yana gelsin ki aynı bölümde işlensin
+  const key = (e: (typeof events)[number]) => e.card_id ?? e.thread_id ?? e.project_hint?.toLocaleLowerCase('tr') ?? '~';
+  events.sort((a, b) => key(a).localeCompare(key(b)) || a.occurred_at.localeCompare(b.occurred_at));
+  const size = 90;
+  const total = Math.min(10, Math.ceil(events.length / size));
+  for (let i = 0; i < total; i++) {
+    const chunk = events.slice(i * size, (i + 1) * size);
+    runState.step = `Wiki kuruluyor (${i + 1}/${total}): ${chunk.length} kayıt`;
+    log(runState.step);
+    const t0 = Date.now();
+    const res = await runClaude({
+      prompt: wikiBuildPrompt({
+        board: await buildBoardContext(store),
+        wiki: await buildWikiIndex(store),
+        events: await formatEvents(store, chunk),
+        part: i + 1,
+        total,
+      }),
+      model: config.modelThink,
+      preset: 'planner',
+      effort: 'medium',
+      onEvent,
+      timeoutMs: 20 * 60_000,
+    });
+    log(`Wiki (${i + 1}/${total}, ${secs(t0)}): ${res.text.split('\n')[0]?.slice(0, 200)}`);
+    if (res.isError) throw new Error(`Wiki kurulumu hatası: ${res.text.slice(0, 400)}`);
+    await exportWiki(store);
+  }
+  await store.setState('wiki_built', new Date().toISOString());
 }
 
 async function notifyTeams() {
@@ -177,8 +217,11 @@ async function execute(kind: JobKind) {
   runState.log = [];
   log(`${kind} çalışması başladı`);
   const startedAt = new Date();
+  const nudgesBefore = await unseenIds(store).catch(() => [] as string[]);
   try {
-    if (kind === 'backfill') {
+    if (kind === 'wiki') {
+      await buildWiki();
+    } else if (kind === 'backfill') {
       // 45 günü parçalara böl; Supabase modunda parçalar aynı anda (varsayılan 3) taranır.
       const end = startedAt.getTime();
       const chunks: [Date, Date][] = [];
@@ -241,6 +284,7 @@ async function execute(kind: JobKind) {
     runState.lastResult = { kind, status: 'error', at: new Date().toISOString(), message };
   } finally {
     await exportWiki(store);
+    await announceNew(nudgesBefore).catch(() => undefined);
     runState.running = null;
     runState.step = '';
   }

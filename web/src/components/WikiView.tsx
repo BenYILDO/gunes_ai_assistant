@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api, type CardStatus, type WikiPageFull, type WikiPageMeta } from '../lib/api';
 import { relTime } from '../lib/time';
 import { Markdown } from './Markdown';
-import { Empty, Panel, PanelTitle } from './ui';
+import { Button, Empty, Panel, PanelTitle } from './ui';
 
 const KINDS: { id: string; label: string; icon: typeof FileText }[] = [
   { id: 'overview', label: 'Genel bakış', icon: BookOpen },
@@ -21,7 +21,17 @@ interface Detail {
   cards: { id: string; title: string; status: CardStatus }[];
 }
 
-export function WikiView({ pages, onOpenCard }: { pages: WikiPageMeta[]; onOpenCard: (id: string) => void }) {
+export function WikiView({
+  pages,
+  onOpenCard,
+  onBuild,
+  building,
+}: {
+  pages: WikiPageMeta[];
+  onOpenCard: (id: string) => void;
+  onBuild: () => void;
+  building: boolean;
+}) {
   const [slug, setSlug] = useState<string | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [missing, setMissing] = useState<string | null>(null);
@@ -59,8 +69,13 @@ export function WikiView({ pages, onOpenCard }: { pages: WikiPageMeta[]; onOpenC
     return (
       <Panel className="flex h-full items-center justify-center p-8" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
         <Empty icon={<BookOpen size={34} />} title="Wiki henüz boş">
-          Güneş bir sonraki taramada projeler, kişiler ve yazışmalar için sayfalar oluşturup birbirine bağlayacak. Sohbette "EDI projesi için wiki sayfası
-          aç" da diyebilirsiniz. Sayfalar bilgisayarınızda <code>data\wiki</code> klasörüne de yazılır; Obsidian ile açabilirsiniz.
+          Güneş, daha önce taradığı mail ve Teams kayıtlarından projeler ve kişiler için sayfalar oluşturup birbirine bağlayabilir. Outlook'u yeniden taramaz.
+          Sayfalar bilgisayarınızda <code>data\wiki</code> klasörüne de yazılır; Obsidian ile açabilirsiniz.
+          <div className="mt-4">
+            <Button variant="primary" size="sm" onClick={onBuild} disabled={building}>
+              {building ? 'Kuruluyor…' : "Kayıtlardan wiki'yi kur"}
+            </Button>
+          </div>
         </Empty>
       </Panel>
     );
