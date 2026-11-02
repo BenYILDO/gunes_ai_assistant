@@ -4,6 +4,7 @@
  * Güneş hiçbir API anahtarı veya oturum belirteci okumaz.
  */
 import { spawn } from 'node:child_process';
+import { EventEmitter } from 'node:events';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,6 +18,9 @@ import {
   M365_READ_TOOLS,
   ROOT,
 } from '../config.js';
+
+/** Claude CLI'ın yayınladığı kullanım limiti olaylarını dinlemek için (bkz. usage.ts). */
+export const usageBus = new EventEmitter();
 
 export const AGENT_HOME = join(DATA_DIR, 'agent-home');
 if (!existsSync(AGENT_HOME)) mkdirSync(AGENT_HOME, { recursive: true });
@@ -89,6 +93,8 @@ export interface RunOptions {
   /** Var olan sohbete devam */
   resume?: string;
   persist?: boolean;
+  /** Düşünme çabası: low | medium | high (toplayıcı için low = daha hızlı) */
+  effort?: string;
   timeoutMs?: number;
   onEvent?: (e: RunnerEvent) => void;
   signal?: AbortSignal;
@@ -130,6 +136,7 @@ export function runClaude(opts: RunOptions): Promise<RunResult> {
   ];
   if (tp.allowed.length) args.push('--allowedTools', tp.allowed.join(','));
   if (tp.disallowed.length) args.push('--disallowedTools', tp.disallowed.join(','));
+  if (opts.effort) args.push('--effort', opts.effort);
   if (opts.appendSystemPrompt) args.push('--append-system-prompt', opts.appendSystemPrompt);
   if (opts.resume) args.push('--resume', opts.resume);
   else if (opts.sessionId) args.push('--session-id', opts.sessionId);
@@ -179,6 +186,8 @@ export function runClaude(opts: RunOptions): Promise<RunResult> {
             opts.onEvent?.({ type: 'tool', name: block.name, input: block.input });
           }
         }
+      } else if (msg.type === 'rate_limit_event' && msg.rate_limit_info) {
+        usageBus.emit('usage', msg.rate_limit_info);
       } else if (msg.type === 'result') {
         result.text = typeof msg.result === 'string' && msg.result ? msg.result : streamed;
         result.isError = Boolean(msg.is_error) || msg.subtype !== 'success';

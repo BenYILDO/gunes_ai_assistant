@@ -48,6 +48,10 @@ export const config = {
   },
   backfillDays: Number(env('GUNES_BACKFILL_DAYS', '45')),
   backfillChunkDays: Number(env('GUNES_BACKFILL_CHUNK_DAYS', '7')),
+  /** Geçmiş taramasında aynı anda çalışan toplayıcı sayısı (sadece Supabase modunda) */
+  backfillParallel: Number(env('GUNES_BACKFILL_PARALLEL', '3')),
+  /** 5 saatlik kullanım bu oranı geçerse 2 saatlik takip ertelenir (sohbete yer kalsın) */
+  usagePauseAt: Number(env('GUNES_USAGE_PAUSE_AT', '0.85')),
 
   vipPeople: list('GUNES_VIP_PEOPLE'),
   ignoreSenders: list('GUNES_IGNORE', 'noreply,no-reply,newsletter,bulten,notification,bildirim'),

@@ -11,15 +11,20 @@ export function collectorPrompt(opts: { from: Date; to: Date; includeCalendar: b
 ZAMAN ARALIĞI: ${opts.from.toISOString()} → ${opts.to.toISOString()}
 (Yerel saat: ${trDate(opts.from)} → ${trDate(opts.to)}, saat dilimi ${config.timezone})
 
-ADIMLAR
-1. get_me ile kullanıcının adını ve e-posta adresini öğren.
-2. Outlook: bu aralıkta GELEN mailleri ara (gerekirse sayfalayarak; en fazla ~150 mail).
-3. Outlook: bu aralıkta kullanıcının GÖNDERDİĞİ mailleri ara. Bunlar iki şey için önemli:
+ADIMLAR (sırayla, gereksiz çağrı yapmadan)
+1. get_me ile kullanıcının adını ve e-posta adresini öğren (tek çağrı).
+2. Gelen mailler: outlook_email_search({ afterDateTime: "${opts.from.toISOString()}", beforeDateTime: "${opts.to.toISOString()}", limit: 25 }) — query, folderName, order GÖNDERME. nextOffset varsa sonraki sayfaya geç; EN FAZLA 6 sayfa.
+3. Gönderilen mailler: outlook_email_search({ folderName: "Sent Items", afterDateTime, beforeDateTime, limit: 25 }) — EN FAZLA 2 sayfa. Bunlar iki şey için önemli:
    - Kullanıcı bir maile cevap vermiş mi? (verdiyse o mail için needs_reply=false)
    - Kullanıcı birinden bir şey istemiş ya da söz vermiş mi? (istediyse waiting_on="them"; söz verdiyse excerpt'e sözü aynen yaz)
-4. Teams: bu aralıktaki sohbet mesajlarını tara (chat_message_search ve/veya teams_list_chats). Kullanıcıya yöneltilmiş soru, istek, @bahsetme ve kararları bul.
+4. Teams: chat_message_search({ query: "*", afterDateTime, beforeDateTime, limit: 25 }) — EN FAZLA 4 sayfa. Kullanıcıya yöneltilmiş soru, istek, @bahsetme ve kararları bul.
 ${opts.includeCalendar ? '5. Takvim: bugün ve önümüzdeki 2 iş günündeki toplantıları outlook_calendar_search ile al (source="calendar", summary: toplantı konusu, katılımcılar, saat; hazırlık gerekiyorsa belirt).\n' : ''}
-NE KAYDEDİLİR (record_events, en fazla 25'erlik gruplar halinde)
+HIZ KURALLARI (çok önemli)
+- Arama sonuçlarındaki konu, gönderen ve önizleme metni çoğu zaman yeterlidir. read_resource ile mail AÇMA; sadece önemi 4-5 olabilecek ve önizlemesi belirsiz olan maillerde aç. Bir çalışmada EN FAZLA 8 read_resource.
+- Her sayfayı okuduktan hemen sonra o sayfadaki anlamlı öğeleri record_events ile kaydet (biriktirme), sonra sonraki sayfaya geç.
+- Özetleri kısa tut (1-2 cümle). Uzun açıklama yazma; düşünmeye değil kaydetmeye odaklan.
+
+NE KAYDEDİLİR (record_events, sayfa sayfa)
 - Kullanıcıdan bir şey isteyen, soru soran, karar bekleyen, tarih veren, sorun bildiren mesajlar
 - Kullanıcının verdiği sözler ve başkalarından beklediği işler
 - Proje gelişmeleri, kararlar, riskler

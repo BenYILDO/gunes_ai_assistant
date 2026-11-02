@@ -1,4 +1,5 @@
 import { config } from '../config.js';
+import { usageIsHigh } from '../usage.js';
 import { runClaude, type RunnerEvent } from '../claude/runner.js';
 import { getStore, type EventItem } from '../store/index.js';
 import { collectorPrompt, notifierPrompt, plannerPrompt } from './prompts.js';
@@ -52,17 +53,23 @@ const onEvent = (e: RunnerEvent) => {
 
 const store = getStore();
 
-async function collect(from: Date, to: Date, includeCalendar: boolean) {
-  runState.step = `Toplanıyor: ${from.toLocaleDateString('tr-TR')} → ${to.toLocaleDateString('tr-TR')}`;
+const trDay = (d: Date) => d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
+const secs = (t0: number) => `${Math.round((Date.now() - t0) / 1000)} sn`;
+
+async function collect(from: Date, to: Date, includeCalendar: boolean, label = '') {
+  const range = `${trDay(from)} → ${trDay(to)}`;
+  runState.step = `Toplanıyor${label}: ${range}`;
   log(runState.step);
+  const t0 = Date.now();
   const res = await runClaude({
     prompt: collectorPrompt({ from, to, includeCalendar }),
     model: config.modelScan,
     preset: 'collector',
+    effort: 'low',
     onEvent,
     timeoutMs: 20 * 60_000,
   });
-  log(`Toplayıcı: ${res.text.split('\n')[0]?.slice(0, 200)}`);
+  log(`Toplayıcı${label} (${range}, ${secs(t0)}): ${res.text.split('\n')[0]?.slice(0, 200)}`);
   if (res.isError) throw new Error(`Toplayıcı hatası: ${res.text.slice(0, 500)}`);
   return res;
 }
@@ -81,6 +88,7 @@ async function plan(kind: JobKind) {
     runState.step = `Planlanıyor${round ? ` (tur ${round + 1})` : ''}: ${events.length} olay`;
     log(runState.step);
     const lastRound = events.length < 120;
+    const t0 = Date.now();
     const res = await runClaude({
       prompt: plannerPrompt({
         kind: kind === 'morning' && !lastRound ? 'backfill' : kind,
@@ -91,10 +99,11 @@ async function plan(kind: JobKind) {
       }),
       model: config.modelThink,
       preset: 'planner',
+      effort: 'medium',
       onEvent,
       timeoutMs: 20 * 60_000,
     });
-    log(`Planlayıcı: ${res.text.split('\n')[0]?.slice(0, 200)}`);
+    log(`Planlayıcı (${secs(t0)}): ${res.text.split('\n')[0]?.slice(0, 200)}`);
     if (res.isError) throw new Error(`Planlayıcı hatası: ${res.text.slice(0, 500)}`);
     if (lastRound) break;
   }
@@ -163,17 +172,41 @@ async function execute(kind: JobKind) {
   const startedAt = new Date();
   try {
     if (kind === 'backfill') {
-      const end = startedAt;
-      let from = new Date(end.getTime() - config.backfillDays * 864e5);
-      while (from < end) {
-        const to = new Date(Math.min(from.getTime() + config.backfillChunkDays * 864e5, end.getTime()));
-        await collect(from, to, false);
-        from = to;
-      }
+      // 45 günü parçalara böl; Supabase modunda parçalar aynı anda (varsayılan 3) taranır.
+      const end = startedAt.getTime();
+      const chunks: [Date, Date][] = [];
+      for (let f = end - config.backfillDays * 864e5; f < end; f += config.backfillChunkDays * 864e5)
+        chunks.push([new Date(f), new Date(Math.min(f + config.backfillChunkDays * 864e5, end))]);
+      chunks.reverse(); // önce en yeni haftalar
+      const parallel = store.mode === 'supabase' ? Math.max(1, config.backfillParallel) : 1;
+      let next = 0;
+      let done = 0;
+      const errors: string[] = [];
+      const worker = async () => {
+        while (next < chunks.length) {
+          const i = next++;
+          try {
+            await collect(chunks[i][0], chunks[i][1], false, ` (${i + 1}/${chunks.length})`);
+          } catch (e) {
+            errors.push((e as Error).message);
+          }
+          done++;
+          runState.step = `Geçmiş taranıyor: ${done}/${chunks.length} parça bitti`;
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(parallel, chunks.length) }, worker));
+      if (errors.length === chunks.length) throw new Error(errors[0]);
+      if (errors.length) log(`${errors.length} parça hata verdi, diğerleriyle devam ediliyor.`);
       await store.setState('last_collect', startedAt.toISOString());
       await plan('backfill');
       await store.setState('backfill_done', startedAt.toISOString());
     } else {
+      if (kind === 'tracker' && (await usageIsHigh())) {
+        log('Claude kullanımı yüksek; takip, sohbete yer kalsın diye ertelendi.');
+        await store.finishRun(run.id, { status: 'skipped', stats: { reason: 'usage' } });
+        runState.lastResult = { kind, status: 'skipped', at: new Date().toISOString(), message: 'Kullanım yüksek, ertelendi' };
+        return;
+      }
       const from = await lastCollect(kind === 'morning' ? 24 : 3);
       await collect(from, startedAt, kind === 'morning');
       await store.setState('last_collect', startedAt.toISOString());

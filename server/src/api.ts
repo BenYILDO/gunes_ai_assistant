@@ -4,6 +4,7 @@ import { runJob, runState, STAT_TR, type JobKind } from './agents/pipeline.js';
 import { STATUS_TR } from './agents/soul.js';
 import { chatHandler } from './chat.js';
 import { nextRuns } from './scheduler.js';
+import { getUsage, refreshUsage } from './usage.js';
 import { CARD_STATUSES, getStore, MEMORY_KINDS, PRIORITIES, type Card, type MemoryKind } from './store/index.js';
 
 const wrap =
@@ -25,8 +26,20 @@ export function apiRouter() {
         timezone: config.timezone,
         run: runState,
         schedule: await nextRuns(),
+        usage: await getUsage(),
         labels: { status: STATUS_TR, stats: STAT_TR },
       });
+    }),
+  );
+
+  // ---------- Claude kullanımı
+  let refreshing: Promise<unknown> | null = null;
+  r.post(
+    '/usage/refresh',
+    wrap(async (_req, res) => {
+      refreshing ??= refreshUsage().finally(() => (refreshing = null));
+      await refreshing;
+      res.json(await getUsage());
     }),
   );
 

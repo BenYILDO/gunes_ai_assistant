@@ -75,7 +75,7 @@ export default function App() {
       void runs.refresh();
       const r = status.data?.run.lastResult;
       if (r?.status === 'error') toast(`Çalışma hata verdi: ${r.message.slice(0, 120)}`, 'error');
-      else if (r) toast(r.status === 'skipped' ? 'Yeni gelişme yok' : 'Güneş çalışmasını tamamladı');
+      else if (r) toast(r.status === 'skipped' ? r.message : 'Güneş çalışmasını tamamladı');
     }
     if (running) void board.refresh();
     prevRunning.current = running;

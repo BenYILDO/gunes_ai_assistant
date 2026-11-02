@@ -57,6 +57,15 @@ export interface ChatSession { id: string; title: string; updated_at: string }
 export interface ChatMessage { id: string; role: 'user' | 'assistant'; content: string; tools: string[]; created_at: string }
 export interface AgentRun { id: string; kind: string; status: string; started_at: string; finished_at: string | null; error: string | null; stats: Record<string, unknown> }
 
+export interface UsageWindow { utilization: number | null; resetsAt: string | null; status: string }
+export interface Usage {
+  status: string;
+  fiveHour: UsageWindow | null;
+  sevenDay: UsageWindow | null;
+  extra: Record<string, UsageWindow>;
+  updatedAt: string;
+}
+
 export interface Status {
   user: { name: string; title: string; role: string };
   store: 'supabase' | 'local';
@@ -78,6 +87,7 @@ export interface Status {
     schedule: { morningTime: string; workEnd: string; trackerEveryHours: number };
   };
   labels: { status: Record<CardStatus, string>; stats: Record<string, string> };
+  usage: Usage | null;
 }
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
@@ -106,6 +116,7 @@ export const api = {
   updateSuggestion: (id: string, status: string, lesson?: string) =>
     req(`/suggestions/${id}`, json('PATCH', { status, lesson })),
   run: (kind: 'morning' | 'tracker' | 'backfill') => req(`/run/${kind}`, json('POST')),
+  refreshUsage: () => req<Usage | null>('/usage/refresh', json('POST')),
   runs: () => req<AgentRun[]>('/runs'),
   memory: () => req<{ memories: Memory[]; journal: JournalEntry[] }>('/memory'),
   addMemory: (m: Partial<Memory>) => req<Memory>('/memory', json('POST', m)),

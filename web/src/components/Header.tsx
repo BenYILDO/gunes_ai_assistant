@@ -7,6 +7,7 @@ import { setVoiceEnabled, voiceEnabled } from '../lib/speech';
 import { fmtTime, greetingOf, relTime, type Phase } from '../lib/time';
 import { SunCore } from './SunCore';
 import { Button } from './ui';
+import { UsageMeter } from './UsageMeter';
 
 export type View = 'board' | 'memory' | 'history';
 
@@ -86,6 +87,8 @@ export function Header({ phase, status, view, onView, onRun, onChat, onReplayInt
             <span className="ml-0.5 text-sm text-ink-faint">{ss}</span>
           </div>
         </div>
+
+        <UsageMeter usage={status?.usage ?? null} />
 
         <Button
           variant="ghost"
