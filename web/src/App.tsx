@@ -21,7 +21,7 @@ import { EndOfDayPrompt } from './components/EndOfDayPrompt';
 import { VoiceBriefing } from './components/VoiceBriefing';
 import { buildScript, type Segment, type SegmentAction } from './lib/voiceScript';
 import { listener, micPreference } from './lib/listener';
-import { currentSpeech } from './lib/speech';
+import { currentSpeech, voiceTest } from './lib/speech';
 import { isEcho, parseIntent, stripWake } from './lib/voiceCommands';
 import { NudgePopup } from './components/NudgePopup';
 import { Sky } from './components/Sky';
@@ -457,6 +457,12 @@ export default function App() {
                   onRun={(k) => void run(k)}
                   onGoBoard={() => setView('board')}
                   onVoice={() => startVoice()}
+                  onVoiceTest={async () => {
+                    const r = await voiceTest(user ? `${user.name} ${user.title}` : '');
+                    if (!r.ok) toast('Bu tarayıcı sesli okumayı desteklemiyor', 'error');
+                    else if (!r.turkish.length) toast('Türkçe ses bulunamadı — Windows Ayarlar › Zaman ve dil › Konuşma’dan Türkçe ses ekleyin', 'error');
+                    else toast(`🔊 ${r.voice}${/emel/i.test(r.voice ?? '') ? '' : ' (Emel bulunamadı)'} · ses gelmiyorsa ses karıştırıcısında Edge düzeyini kontrol edin`);
+                  }}
                 />
               </motion.div>
             )}

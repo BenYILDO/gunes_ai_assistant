@@ -90,3 +90,13 @@ export function speakAsync(text: string, opts: { rate?: number; pitch?: number; 
 export function speak(text: string) {
   void speakAsync(text);
 }
+
+/** Ses testi: kısa bir cümle okur ve kullanılan sesi/bulunan Türkçe sesleri döndürür. */
+export async function voiceTest(name: string) {
+  if (!('speechSynthesis' in window)) return { ok: false, voice: null as string | null, turkish: [] as string[] };
+  await new Promise<void>((r) => whenVoices(r));
+  const turkish = window.speechSynthesis.getVoices().filter((v) => v.lang.toLowerCase().startsWith('tr')).map((v) => v.name);
+  const voice = pickVoice()?.name ?? null;
+  void speakAsync(`Merhaba ${name}, sesimi duyuyor musunuz? Ben Güneş.`, { force: true });
+  return { ok: true, voice, turkish };
+}
