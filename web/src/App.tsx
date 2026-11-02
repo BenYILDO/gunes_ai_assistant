@@ -3,9 +3,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, type Card, type CardStatus, type Nudge, type PendingAction, type Suggestion, type WeatherKind } from './lib/api';
 import { buildAgenda } from './lib/agenda';
 import { Approvals } from './components/Approvals';
-import { usePoll } from './lib/hooks';
+import { useLocalFlag, usePoll } from './lib/hooks';
 import { phaseOf, relTime, type Phase } from './lib/time';
-import { Board } from './components/Board';
+import { BoardWorkspace } from './components/BoardWorkspace';
 import { BriefingPanel } from './components/Briefing';
 import { CardModal } from './components/CardModal';
 import { ChatPanel } from './components/ChatPanel';
@@ -84,6 +84,7 @@ export default function App() {
   const [intro, setIntro] = useState(shouldPlayIntro);
   const [introReady, setIntroReady] = useState(false);
   const [openCardId, setOpenCardId] = useState<string | null>(null);
+  const [focusMode, setFocusMode] = useLocalFlag('gunes.boardFocus', false);
 
   const status = usePoll(api.status, 4000);
   const running = status.data?.run.running ?? null;
@@ -299,12 +300,20 @@ export default function App() {
             {view === 'board' && (
               <motion.div
                 key="board"
-                className="grid h-full grid-cols-1 gap-4 lg:grid-cols-[360px_1fr]"
+                className={`grid h-full grid-cols-1 gap-4 ${focusMode ? '' : 'lg:grid-cols-[360px_1fr]'}`}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0, transition: { duration: 0.15 } }}
               >
-                <div className="scroll-thin min-h-0 space-y-4 overflow-y-auto pr-1 max-lg:max-h-[45vh]">
+                <AnimatePresence initial={false}>
+                {!focusMode && (
+                <motion.div
+                  key="side"
+                  initial={{ opacity: 0, x: -30 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -30, transition: { duration: 0.2 } }}
+                  className="scroll-thin min-h-0 space-y-4 overflow-y-auto pr-1 max-lg:max-h-[45vh]"
+                >
                   <Approvals items={actions.data ?? []} onResolve={(a, d) => void resolveAction(a, d)} />
                   <BriefingPanel
                     agenda={agenda.items}
@@ -314,10 +323,20 @@ export default function App() {
                     onRun={(k) => void run(k)}
                   />
                   <SuggestionsPanel items={suggestions.data ?? []} onAct={(s, st, l) => void actSuggestion(s, st, l)} onOpenCard={setOpenCardId} />
-                </div>
-                <div className="min-h-0 min-w-0">
-                  <Board cards={cards} projects={projects} onMove={(c, s) => void moveCard(c, s)} onOpen={(c) => setOpenCardId(c.id)} onQuickAdd={(t, s) => void quickAdd(t, s)} />
-                </div>
+                </motion.div>
+                )}
+                </AnimatePresence>
+                <motion.div layout transition={{ type: 'spring', stiffness: 260, damping: 30 }} className="min-h-0 min-w-0">
+                  <BoardWorkspace
+                    cards={cards}
+                    projects={projects}
+                    focus={focusMode}
+                    onFocus={setFocusMode}
+                    onMove={(c, s) => void moveCard(c, s)}
+                    onOpen={(c) => setOpenCardId(c.id)}
+                    onQuickAdd={(t, s) => void quickAdd(t, s)}
+                  />
+                </motion.div>
               </motion.div>
             )}
             {view === 'wiki' && (

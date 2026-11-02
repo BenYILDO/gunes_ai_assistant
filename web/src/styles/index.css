@@ -268,3 +268,26 @@ html[data-weather='snow'] .glass,
 html[data-weather='drizzle'] .glass {
   background: linear-gradient(180deg, rgb(16 14 34 / 0.62), rgb(12 10 28 / 0.55));
 }
+
+/* Yakınlaştırma kaydırıcısı */
+.zoom-range {
+  -webkit-appearance: none;
+  appearance: none;
+  border-radius: 99px;
+  background: linear-gradient(90deg, var(--accent) 0 var(--p), rgb(255 255 255 / 0.15) var(--p) 100%);
+}
+.zoom-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 99px;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgb(var(--glow) / 0.35);
+}
+.zoom-range::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: none;
+  border-radius: 99px;
+  background: #fff;
+}

@@ -149,7 +149,7 @@ function Column({
       initial={{ opacity: 0, y: 30 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.25 + index * 0.07, duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
-      className={`glass relative flex min-w-[228px] flex-1 basis-0 flex-col rounded-2xl transition-[box-shadow,border-color] duration-300 ${
+      className={`glass relative flex min-w-[228px] max-w-[400px] flex-1 basis-0 flex-col rounded-2xl transition-[box-shadow,border-color] duration-300 ${
         isOver ? '!border-[color:var(--accent)] shadow-[0_0_0_1px_var(--accent),0_0_40px_-8px_rgb(var(--glow)/0.6)]' : ''
       } ${isReview && cards.length ? 'border-[color:var(--ok)]/30' : ''}`}
     >

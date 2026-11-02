@@ -40,7 +40,7 @@ export function NudgePopup({
 
   const shown = items.slice(-3);
   return (
-    <div className="pointer-events-none fixed bottom-5 right-5 z-[60] flex w-[min(400px,calc(100vw-40px))] flex-col gap-3">
+    <div className="pointer-events-none fixed bottom-16 right-5 z-[60] flex w-[min(400px,calc(100vw-40px))] flex-col gap-3">
       <AnimatePresence initial={false}>
         {shown.map((n) => (
           <motion.div
