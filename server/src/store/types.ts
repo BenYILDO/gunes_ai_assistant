@@ -202,6 +202,8 @@ export interface Store {
 
   listCards(opts?: { includeDone?: boolean }): Promise<Card[]>;
   getCard(id: string): Promise<Card | null>;
+  /** Kısa id (ilk 8+ karakter) ile hedefli arama — tüm tabloyu çekmeden */
+  findCardsByPrefix(prefix: string): Promise<Card[]>;
   createCard(card: NewCard): Promise<Card>;
   updateCard(id: string, patch: Partial<Card>): Promise<Card>;
   deleteCard(id: string): Promise<void>;
@@ -212,6 +214,7 @@ export interface Store {
   insertEvents(events: NewEvent[]): Promise<{ inserted: number; skipped: number }>;
   listEvents(opts: { unprocessed?: boolean; limit?: number; sinceDays?: number }): Promise<EventItem[]>;
   updateEvents(ids: string[], patch: Partial<EventItem>): Promise<void>;
+  findEventIdsByPrefix(prefixes: string[]): Promise<string[]>;
 
   listSuggestions(status?: Suggestion['status']): Promise<Suggestion[]>;
   createSuggestion(s: Omit<Suggestion, 'id' | 'created_at' | 'status'>): Promise<Suggestion>;
@@ -251,6 +254,8 @@ export interface Store {
   searchChatMessages(query: string, limit?: number): Promise<(ChatMessage & { session_title: string })[]>;
 
   listWikiPages(): Promise<WikiPage[]>;
+  /** İçeriksiz liste (index, bağlantılar için hızlı) */
+  listWikiMeta(): Promise<Omit<WikiPage, 'content' | 'sources'>[]>;
   getWikiPage(slug: string): Promise<WikiPage | null>;
   upsertWikiPage(p: Pick<WikiPage, 'slug' | 'title' | 'kind' | 'summary' | 'content' | 'links' | 'sources'>): Promise<WikiPage>;
 

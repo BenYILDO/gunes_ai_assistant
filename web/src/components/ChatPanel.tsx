@@ -94,6 +94,15 @@ export function ChatPanel({ open, phase, userName, onClose, onActivity, focusSes
           else if (e.type === 'tool') {
             usedTools = true;
             patch((m) => ({ ...m, tools: [...m.tools, e.label], content: m.content && !m.content.endsWith('\n\n') ? m.content + '\n\n' : m.content }));
+          } else if (e.type === 'tool_done') {
+            const secs = e.ms < 1000 ? '<1 sn' : `${Math.round(e.ms / 1000)} sn`;
+            patch((m) => {
+              const i = m.tools.findIndex((t) => t === e.label);
+              if (i < 0) return m;
+              const tools = [...m.tools];
+              tools[i] = `${e.label} · ${secs}`;
+              return { ...m, tools };
+            });
           } else if (e.type === 'done') patch((m) => ({ ...m, content: e.text || m.content, live: false }));
         },
         ctrl.signal,
@@ -234,7 +243,7 @@ export function ChatPanel({ open, phase, userName, onClose, onActivity, focusSes
                         {m.tools.length > 0 && (
                           <div className="mb-2 flex flex-wrap gap-1.5">
                             {m.tools.map((t, i) => {
-                              const active = m.live && i === m.tools.length - 1;
+                              const active = m.live && !t.includes(' · ');
                               return (
                                 <motion.span
                                   key={i}

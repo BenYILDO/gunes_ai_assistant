@@ -120,7 +120,7 @@ ${opts.events || '(yok)'}
    - question: "neden?" diye sorulmaya değer bir karar ya da kör nokta (EN FAZLA 2, sadece gerçekten değerliyse)
    Aynı öneriyi tekrar etme; hafızadaki derslere uy (kullanıcı reddettiyse sorma).
 4. Wiki (bilgi birikimi) — ATLAMA: Bu çalışmada dokunduğun her PROJE ve işi isteyen her KİŞİ için (en fazla 5 sayfa):
-   - Wiki kataloğunda sayfası YOKSA oluştur; VARSA ve yeni bilgi geldiyse wiki_read ile oku, mevcut bilgiyi KORUYARAK wiki_write ile güncelle.
+   - Wiki kataloğunda sayfası YOKSA wiki_write ile oluştur; VARSA wiki_edit ile SADECE değişen yeri ekle/düzelt (zaman çizelgesine satır, duruma cümle). Var olan sayfayı wiki_write ile baştan yazma — çok yavaş.
    - Sadece bilgi niteliğindeki önemsiz olaylar için sayfa açma.
    - project sayfası: Amaç · Durum · Kimler ([[kişi]] bağlantılı) · Zaman çizelgesi (tarih + olay + kaynak) · İlgili yazışmalar (dizi kimlikleri) · Açık sorular.
    - person sayfası: Rol/kurum · Hangi işlerle ilgili ([[proje]] bağlantılı) · İletişim notları.
@@ -148,7 +148,7 @@ ${opts.events}
 
 # GÖREV
 1. Bu olaylarda geçen her anlamlı PROJE/İŞ KONUSU için bir project sayfası, işin içinde olan her KİŞİ için bir person sayfası oluştur ya da güncelle.
-   - Sayfa varsa önce wiki_read ile oku ve mevcut bilgiyi KORUYARAK genişlet (wiki_write içeriğin tamamını yazar).
+   - Sayfa yoksa wiki_write ile oluştur. Sayfa VARSA wiki_edit ile sadece yeni satırları/bölümleri ekle (wiki_write ile baştan yazma — çok yavaş).
    - project: Amaç · Durum · Kimler ([[kişi]]) · Zaman çizelgesi (tarih — olay — kaynak) · İlgili yazışmalar (dizi kimlikleri) · Açık sorular
    - person: Rol/kurum · Hangi işler ([[proje]]) · İletişim notları
    - Kritik cümleleri (söz, tarih, rakam, karar) alıntı olarak AYNEN koru. Çelişki varsa "⚠️ Çelişki:" yaz. Farklı yer/kurum/kişi içeren işleri aynı sayfada karıştırma.
@@ -182,7 +182,7 @@ ${wiki}
 - Kullanıcı "tara / kontrol et / yeni ne var" derse start_scan ile arka planda taramayı başlat (morning: sabah brifingi, tracker: son taramadan beri). Hızlı bir soru için tarama başlatma; doğrudan Outlook/Teams'te ara.
 - Silme işlemini kendin YAPAMAZSIN. Kullanıcı bir kartın ya da hafıza kaydının silinmesini isterse propose_deletion ile öner ve "panodaki 'Onayınızı bekliyor' bölümünden onaylayabilirsiniz" de.
 - Hafızada bir şey yanlışsa update_memory ile düzelt; aramak için recall kullan.
-- Bir proje/kişi hakkında soru gelirse önce wiki'ye bak (wiki_search / wiki_read); cevabın değerliyse wiki'ye geri işle (wiki_write).
+- Bir proje/kişi hakkında soru gelirse önce wiki'ye bak (wiki_search / wiki_read). Var olan sayfaya bilgi eklerken wiki_edit kullan (sayfanın tamamını yeniden yazma, çok yavaş); wiki_write sadece yeni sayfa içindir.
 - Kullanıcı "bu mail dizisini / Teams grubunu X projesine bağla" derse ilgili mesajı bulup dizi kimliğini çıkar ve link_thread ile bağla (proje sayfası yoksa önce wiki_write ile oluştur).
 - "Geçen konuştuğumuz…" gibi durumlarda search_chats ile eski Güneş sohbetlerinde ara.
 - Outlook/Teams'e sadece OKUMA için bakabilirsin; istenirse cevap TASLAĞI oluşturabilirsin, asla gönderemezsin.

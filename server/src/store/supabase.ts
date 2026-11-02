@@ -20,6 +20,14 @@ import type {
   Suggestion,
 } from './types.js';
 
+/** UUID önekini (ör. "abcd1234") id aralığına çevirir: uuid sıralaması hex sıralamasıyla aynıdır. */
+function uuidRange(prefix: string): [string, string] | null {
+  const hex = prefix.trim().toLowerCase().replace(/-/g, '');
+  if (!/^[0-9a-f]{4,32}$/.test(hex)) return null;
+  const fmt = (h: string) => `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
+  return [fmt(hex.padEnd(32, '0')), fmt(hex.padEnd(32, 'f'))];
+}
+
 function must<T>(res: { data: T | null; error: { message: string } | null }, what: string): T {
   if (res.error) throw new Error(`Supabase (${what}): ${res.error.message}`);
   return res.data as T;
@@ -58,6 +66,11 @@ export class SupabaseStore implements Store {
   }
   async getCard(id: string) {
     return must(await this.db.from('cards').select('*').eq('id', id).maybeSingle(), 'card') as Card | null;
+  }
+  async findCardsByPrefix(prefix: string) {
+    const r = uuidRange(prefix);
+    if (!r) return [];
+    return must(await this.db.from('cards').select('*').gte('id', r[0]).lte('id', r[1]).limit(5), 'card prefix') as Card[];
   }
   async createCard(card: NewCard) {
     return must(await this.db.from('cards').insert(card).select().single(), 'card insert') as Card;
@@ -100,6 +113,17 @@ export class SupabaseStore implements Store {
   async updateEvents(ids: string[], patch: Partial<EventItem>) {
     if (!ids.length) return;
     must(await this.db.from('events').update(patch).in('id', ids), 'events update');
+  }
+
+  async findEventIdsByPrefix(prefixes: string[]) {
+    const out: string[] = [];
+    for (const p of prefixes) {
+      const r = uuidRange(p);
+      if (!r) continue;
+      const rows = must(await this.db.from('events').select('id').gte('id', r[0]).lte('id', r[1]).limit(2), 'event prefix') as { id: string }[];
+      if (rows.length === 1) out.push(rows[0].id);
+    }
+    return out;
   }
 
   async listSuggestions(status?: Suggestion['status']) {
@@ -257,6 +281,12 @@ export class SupabaseStore implements Store {
 
   async listWikiPages() {
     return must(await this.db.from('wiki_pages').select('*').order('kind').order('title'), 'wiki list') as WikiPage[];
+  }
+  async listWikiMeta() {
+    return must(
+      await this.db.from('wiki_pages').select('id, slug, title, kind, summary, links, created_at, updated_at').order('kind').order('title'),
+      'wiki meta',
+    ) as Omit<WikiPage, 'content' | 'sources'>[];
   }
   async getWikiPage(slug: string) {
     return must(await this.db.from('wiki_pages').select('*').eq('slug', slug).maybeSingle(), 'wiki page') as WikiPage | null;

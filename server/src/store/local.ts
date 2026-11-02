@@ -122,6 +122,10 @@ export class LocalStore implements Store {
   async getCard(id: string) {
     return this.read().cards.find((c) => c.id === id) ?? null;
   }
+  async findCardsByPrefix(prefix: string) {
+    const p = prefix.trim().toLowerCase();
+    return this.read().cards.filter((c) => c.id.startsWith(p)).slice(0, 5);
+  }
   async createCard(card: NewCard) {
     return this.tx((db) => {
       const c: Card = {
@@ -193,6 +197,14 @@ export class LocalStore implements Store {
   }
   async updateEvents(ids: string[], patch: Partial<EventItem>) {
     this.tx((db) => db.events.filter((e) => ids.includes(e.id)).forEach((e) => Object.assign(e, patch)));
+  }
+
+  async findEventIdsByPrefix(prefixes: string[]) {
+    const events = this.read().events;
+    return prefixes
+      .map((p) => events.filter((e) => e.id.startsWith(p.trim().toLowerCase())))
+      .filter((m) => m.length === 1)
+      .map((m) => m[0].id);
   }
 
   async listSuggestions(status?: Suggestion['status']) {
@@ -384,6 +396,9 @@ export class LocalStore implements Store {
 
   async listWikiPages() {
     return this.read().wiki_pages.sort((a, b) => a.kind.localeCompare(b.kind) || a.title.localeCompare(b.title, 'tr'));
+  }
+  async listWikiMeta() {
+    return (await this.listWikiPages()).map(({ content: _c, sources: _s, ...m }) => m);
   }
   async getWikiPage(slug: string) {
     return this.read().wiki_pages.find((p) => p.slug === slug) ?? null;

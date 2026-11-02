@@ -11,7 +11,9 @@ import { z } from 'zod';
 import { buildBoardContext, ensureSoul, formatEvents, STATUS_TR } from './agents/soul.js';
 import { extractLinks, slugify } from './wiki.js';
 import { createNudge, unseenIds } from './nudges.js';
-import { config } from './config.js';
+import { appendFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { config, DATA_DIR } from './config.js';
 import { getStore, type Card, type CardStatus, type SourceRef } from './store/index.js';
 
 const store = getStore();
@@ -22,8 +24,7 @@ const ok = (text: string) => ({ content: [{ type: 'text' as const, text }] });
 const fail = (text: string) => ({ content: [{ type: 'text' as const, text: `HATA: ${text}` }], isError: true });
 
 async function resolveCard(idOrPrefix: string): Promise<Card> {
-  const cards = await store.listCards({ includeDone: true });
-  const hits = cards.filter((c) => c.id.startsWith(idOrPrefix.trim()));
+  const hits = await store.findCardsByPrefix(idOrPrefix.trim().replace(/[\[\]]/g, ''));
   if (hits.length === 1) return hits[0];
   if (!hits.length) throw new Error(`Kart bulunamadı: ${idOrPrefix}`);
   throw new Error(`Birden fazla kart eşleşti, daha uzun id verin: ${idOrPrefix}`);
@@ -31,10 +32,7 @@ async function resolveCard(idOrPrefix: string): Promise<Card> {
 
 async function resolveEventIds(ids: string[]): Promise<string[]> {
   if (!ids.length) return [];
-  const events = await store.listEvents({ limit: 5000, sinceDays: 120 });
-  return ids
-    .map((p) => events.find((e) => e.id.startsWith(p.trim()))?.id)
-    .filter((x): x is string => Boolean(x));
+  return store.findEventIdsByPrefix(ids.map((p) => p.trim().replace(/[\[\]]/g, '')));
 }
 
 async function projectId(name?: string | null) {
@@ -53,6 +51,29 @@ const agentStatus = z.enum(['inbox', 'todo', 'doing', 'waiting', 'review']);
 const priority = z.enum(['low', 'medium', 'high', 'critical']);
 
 const server = new McpServer({ name: 'gunes', version: '0.1.0' });
+
+// Her aracın süresini data/timing.log'a yaz (yavaşlık teşhisi için)
+const TIMING_LOG = join(DATA_DIR, 'timing.log');
+const register = server.registerTool.bind(server) as (...a: any[]) => unknown;
+(server as any).registerTool = (name: string, def: unknown, handler: (...a: any[]) => Promise<any>) =>
+  register(name, def, async (...args: any[]) => {
+    const t0 = Date.now();
+    let okFlag = true;
+    try {
+      const r = await handler(...args);
+      okFlag = !r?.isError;
+      return r;
+    } catch (e) {
+      okFlag = false;
+      throw e;
+    } finally {
+      try {
+        appendFileSync(TIMING_LOG, JSON.stringify({ at: new Date().toISOString(), src: 'mcp', tool: name, ms: Date.now() - t0, ok: okFlag, store: store.mode }) + '\n');
+      } catch {
+        /* log yazılamazsa geç */
+      }
+    }
+  });
 
 // ---------------------------------------------------------------- Olaylar
 server.registerTool(
@@ -524,7 +545,7 @@ server.registerTool(
     inputSchema: {},
   },
   async () => {
-    const pages = await store.listWikiPages();
+    const pages = await store.listWikiMeta();
     if (!pages.length) return ok('Wiki henüz boş.');
     return ok(pages.map((p) => `- [[${p.slug}]] (${p.kind}) ${p.title} — ${p.summary} · ${p.updated_at.slice(0, 10)}`).join('\n'));
   },
@@ -536,7 +557,7 @@ server.registerTool(
   async ({ slug }) => {
     const p = await store.getWikiPage(slugify(slug));
     if (!p) return fail(`Sayfa yok: ${slug}`);
-    const backlinks = (await store.listWikiPages()).filter((x) => x.links.includes(p.slug)).map((x) => `[[${x.slug}]]`);
+    const backlinks = (await store.listWikiMeta()).filter((x) => x.links.includes(p.slug)).map((x) => `[[${x.slug}]]`);
     return ok(
       `# ${p.title} (${p.kind})\n${p.summary}\n\n${p.content}\n\n---\nKaynaklar: ${p.sources.length}\nBu sayfaya bağlananlar: ${backlinks.join(', ') || '-'}`,
     );
@@ -547,7 +568,7 @@ server.registerTool(
   'wiki_write',
   {
     description:
-      "Wiki sayfası oluşturur ya da günceller (içeriğin TAMAMINI yazarsın; önce wiki_read ile mevcut hali oku ve koru). Kurallar: markdown; diğer sayfalara [[slug]] ile bağlan; her önemli iddianın sonuna kaynağını yaz (ör. '(mail, 28 Eki, Bahadır Bey)'); kritik cümleleri alıntı olarak aynen koru; çelişki görürsen '⚠️ Çelişki:' diye işaretle. Proje sayfasında: Amaç, Durum, Kimler, Zaman çizelgesi, İlgili yazışmalar, Açık sorular. Kişi sayfasında: Rol, Hangi işler, İletişim notları.",
+      "YENİ wiki sayfası oluşturur ya da sayfayı KAPSAMLI yeniden düzenler (içeriğin TAMAMINI yazarsın — yavaştır). Var olan sayfaya ekleme/düzeltme için wiki_edit kullan. Kurallar: markdown; diğer sayfalara [[slug]] ile bağlan; her önemli iddianın sonuna kaynağını yaz (ör. '(mail, 28 Eki, Bahadır Bey)'); kritik cümleleri alıntı olarak aynen koru; çelişki görürsen '⚠️ Çelişki:' diye işaretle. Proje sayfasında: Amaç, Durum, Kimler, Zaman çizelgesi, İlgili yazışmalar, Açık sorular. Kişi sayfasında: Rol, Hangi işler, İletişim notları.",
     inputSchema: {
       slug: z.string().describe('küçük harf, tire ile: akaryakit-fiyat-otomasyonu'),
       title: z.string(),
@@ -570,6 +591,80 @@ server.registerTool(
       sources: [...(existing?.sources ?? []), ...(a.add_sources as SourceRef[])].slice(-200),
     });
     return ok(`Wiki ${existing ? 'güncellendi' : 'oluşturuldu'}: [[${slug}]]`);
+  },
+);
+
+server.registerTool(
+  'wiki_edit',
+  {
+    description:
+      "Var olan wiki sayfasında KÜÇÜK değişiklik yapar — sayfanın tamamını yeniden yazmadan (çok daha hızlı). Satır/madde eklemek, bir cümleyi düzeltmek, durum güncellemek için HER ZAMAN bunu kullan; wiki_write'ı sadece yeni sayfa ya da kapsamlı yeniden düzenleme için kullan. İşlemler sırayla uygulanır.",
+    inputSchema: {
+      slug: z.string(),
+      ops: z
+        .array(
+          z.discriminatedUnion('op', [
+            z.object({
+              op: z.literal('append'),
+              section: z.string().describe('Bölüm başlığı (## olmadan), örn: "Zaman çizelgesi". Yoksa sayfa sonuna yeni bölüm olarak eklenir.'),
+              text: z.string().describe('Bölümün SONUNA eklenecek satır(lar); tablo satırı ya da "- madde" olabilir'),
+            }),
+            z.object({
+              op: z.literal('replace'),
+              find: z.string().describe('Sayfada BİREBİR geçen metin (tek bir kez geçmeli)'),
+              replace: z.string(),
+            }),
+            z.object({ op: z.literal('summary'), text: z.string().max(200) }),
+          ]),
+        )
+        .min(1)
+        .max(10),
+      add_sources: z.array(sourceSchema).default([]),
+    },
+  },
+  async ({ slug, ops, add_sources }) => {
+    const p = await store.getWikiPage(slugify(slug));
+    if (!p) return fail(`Sayfa yok: ${slug}. Yeni sayfa için wiki_write kullan.`);
+    let content = p.content;
+    let summary = p.summary;
+    const done: string[] = [];
+    for (const o of ops) {
+      if (o.op === 'summary') {
+        summary = o.text;
+        done.push('özet');
+      } else if (o.op === 'replace') {
+        const n = content.split(o.find).length - 1;
+        if (n !== 1) return fail(`"${o.find.slice(0, 60)}" metni sayfada ${n} kez geçiyor; tam olarak 1 kez geçen bir metin ver.`);
+        content = content.replace(o.find, o.replace);
+        done.push('düzeltme');
+      } else {
+        const lines = content.split('\n');
+        const norm = (s: string) => s.replace(/^#+\s*/, '').trim().toLocaleLowerCase('tr');
+        const start = lines.findIndex((l) => /^#{1,3}\s/.test(l) && norm(l) === norm(o.section));
+        if (start < 0) {
+          content = `${content.trimEnd()}\n\n## ${o.section}\n${o.text}`;
+        } else {
+          let end = lines.findIndex((l, i) => i > start && /^#{1,3}\s/.test(l));
+          if (end < 0) end = lines.length;
+          // Bölümün sonundaki boş satırların öncesine ekle
+          let at = end;
+          while (at > start + 1 && lines[at - 1].trim() === '') at--;
+          lines.splice(at, 0, ...o.text.split('\n'));
+          content = lines.join('\n');
+        }
+        done.push(`${o.section} +`);
+      }
+    }
+    await store.upsertWikiPage({
+      slug: p.slug,
+      title: p.title,
+      kind: p.kind,
+      summary,
+      content,
+      links: extractLinks(content).filter((l) => l !== p.slug),
+      sources: [...p.sources, ...(add_sources as SourceRef[])].slice(-200),
+    });
+    return ok(`[[${p.slug}]] güncellendi: ${done.join(', ')}`);
   },
 );
 

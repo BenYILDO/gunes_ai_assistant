@@ -119,6 +119,7 @@ Sonra herhangi bir projede *"Güneş panosunda X kartına ilerleme notu düş"* 
 | `npm run doctor -- --live` | Kurulum kontrolü |
 | `npm run run:morning` / `run:tracker` / `run:backfill` | Ajanları elle çalıştırır |
 | `npm run demo` | Yerel modda örnek veri yükler (arayüzü denemek için) |
+| `npm run timing` | Son 24 saatin zaman raporu: hangi tur/araç ne kadar sürdü (`npm run timing -- 72` → son 72 saat) |
 | `scripts\windows\stop-gunes.ps1` | Sunucuyu durdurur |
 | `scripts\windows\uninstall-autostart.ps1` | Açılıştan kaldırır |
 

@@ -46,7 +46,8 @@ const toolLabel = (name: string) => {
     ask_link: 'Size soru bırakıyor',
     link_thread: 'Yazışmayı projeye bağlıyor',
     wiki_read: 'Wiki sayfasını okuyor',
-    wiki_write: 'Wiki\'yi güncelliyor',
+    wiki_write: 'Wiki sayfası yazıyor',
+    wiki_edit: 'Wiki\'yi düzenliyor',
     nudge_user: 'Size sesleniyor',
   };
   return map[t] ?? t;
@@ -55,7 +56,8 @@ const toolLabel = (name: string) => {
 const onEvent = (e: RunnerEvent) => {
   if (e.type === 'tool') {
     runState.step = toolLabel(e.name);
-    log(`→ ${runState.step}`);
+  } else if (e.type === 'tool_done') {
+    log(`→ ${toolLabel(e.name)} (${(e.ms / 1000).toFixed(1)} sn)`);
   }
 };
 

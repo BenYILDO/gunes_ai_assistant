@@ -20,7 +20,8 @@
     "run:tracker": "node --use-system-ca server/dist/cli.js tracker",
     "run:backfill": "node --use-system-ca server/dist/cli.js backfill",
     "typecheck": "tsc -p server/tsconfig.json --noEmit && tsc -p web/tsconfig.json --noEmit",
-    "demo": "node --use-system-ca server/dist/demo.js"
+    "demo": "node --use-system-ca server/dist/demo.js",
+    "timing": "node server/dist/timing.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",

@@ -34,7 +34,8 @@ const TOOL_TR: Record<string, string> = {
   search_chats: 'Eski sohbetlere bakıyor',
   wiki_index: 'Wiki\'ye bakıyor',
   wiki_read: 'Wiki sayfasını okuyor',
-  wiki_write: 'Wiki\'yi güncelliyor',
+  wiki_write: 'Wiki sayfası yazıyor',
+  wiki_edit: 'Wiki\'yi düzenliyor',
   wiki_search: 'Wiki\'de arıyor',
   write_journal: 'Günlüğüne yazıyor',
   WebFetch: 'Kaynağı okuyor',
@@ -90,7 +91,7 @@ export async function chatHandler(req: Request, res: Response) {
           const label = toolLabelTr(e.name);
           tools.push(label);
           send({ type: 'tool', label });
-        }
+        } else if (e.type === 'tool_done') send({ type: 'tool_done', label: toolLabelTr(e.name), ms: e.ms });
       },
     });
   };

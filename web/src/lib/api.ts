@@ -184,6 +184,7 @@ export type ChatStreamEvent =
   | { type: 'session'; id: string; title: string }
   | { type: 'text'; text: string }
   | { type: 'tool'; label: string }
+  | { type: 'tool_done'; label: string; ms: number }
   | { type: 'done'; text: string; isError: boolean };
 
 /** POST /api/chat SSE akışını okur. */

@@ -5,7 +5,7 @@
  */
 import { spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -108,6 +108,7 @@ export type RunnerEvent =
   | { type: 'init'; sessionId: string; mcp: { name: string; status: string }[]; tools: string[] }
   | { type: 'text'; text: string }
   | { type: 'tool'; name: string; input: unknown }
+  | { type: 'tool_done'; name: string; ms: number }
   | { type: 'result'; text: string; isError: boolean; costUsd?: number; turns?: number };
 
 export interface RunResult {
@@ -157,6 +158,13 @@ export function runClaude(opts: RunOptions): Promise<RunResult> {
 
   return new Promise((resolve) => {
     const result: RunResult = { text: '', isError: false, sessionId: null, tools: [], stderr: '' };
+    // Zaman ölçümü (data/timing.log): CLI açılışı, her araç, toplam, çıktı tokenı
+    const t0 = Date.now();
+    let initMs = 0;
+    let outTokens = 0;
+    let modelId = opts.model;
+    const toolStarts = new Map<string, { name: string; t: number }>();
+    const toolTimes: { name: string; ms: number }[] = [];
     let buf = '';
     let streamed = '';
     const timer = setTimeout(() => {
@@ -175,6 +183,8 @@ export function runClaude(opts: RunOptions): Promise<RunResult> {
         return;
       }
       if (msg.type === 'system' && msg.subtype === 'init') {
+        initMs = Date.now() - t0;
+        modelId = msg.model ?? modelId;
         result.sessionId = msg.session_id ?? null;
         opts.onEvent?.({ type: 'init', sessionId: msg.session_id, mcp: msg.mcp_servers ?? [], tools: msg.tools ?? [] });
       } else if (msg.type === 'stream_event') {
@@ -186,9 +196,18 @@ export function runClaude(opts: RunOptions): Promise<RunResult> {
       } else if (msg.type === 'assistant') {
         for (const block of msg.message?.content ?? []) {
           if (block.type === 'tool_use') {
+            toolStarts.set(block.id, { name: block.name, t: Date.now() });
             result.tools.push(block.name);
             opts.onEvent?.({ type: 'tool', name: block.name, input: block.input });
           }
+        }
+      } else if (msg.type === 'user') {
+        for (const block of msg.message?.content ?? []) {
+          const s = block.type === 'tool_result' ? toolStarts.get(block.tool_use_id) : undefined;
+          if (!s) continue;
+          const ms = Date.now() - s.t;
+          toolTimes.push({ name: s.name.split('__').pop() ?? s.name, ms });
+          opts.onEvent?.({ type: 'tool_done', name: s.name, ms });
         }
       } else if (msg.type === 'rate_limit_event' && msg.rate_limit_info) {
         usageBus.emit('usage', msg.rate_limit_info);
@@ -196,6 +215,7 @@ export function runClaude(opts: RunOptions): Promise<RunResult> {
         result.text = typeof msg.result === 'string' && msg.result ? msg.result : streamed;
         result.isError = Boolean(msg.is_error) || msg.subtype !== 'success';
         result.costUsd = msg.total_cost_usd;
+        outTokens = msg.usage?.output_tokens ?? 0;
         result.sessionId = msg.session_id ?? result.sessionId;
         opts.onEvent?.({
           type: 'result',
@@ -227,6 +247,24 @@ export function runClaude(opts: RunOptions): Promise<RunResult> {
     child.on('close', (code) => {
       clearTimeout(timer);
       handle(buf);
+      try {
+        appendFileSync(
+          join(DATA_DIR, 'timing.log'),
+          JSON.stringify({
+            at: new Date().toISOString(),
+            src: 'claude',
+            preset: opts.preset,
+            model: modelId,
+            init_ms: initMs,
+            total_ms: Date.now() - t0,
+            out_tokens: outTokens,
+            tools: toolTimes,
+            error: result.isError || undefined,
+          }) + '\n',
+        );
+      } catch {
+        /* log yazılamazsa geç */
+      }
       if (!result.text && streamed) result.text = streamed;
       if (code && code !== 0 && !result.text) {
         result.isError = true;
