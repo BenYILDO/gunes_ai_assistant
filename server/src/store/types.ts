@@ -82,6 +82,17 @@ export interface Suggestion {
   created_at: string;
 }
 
+export interface PendingAction {
+  id: string;
+  action: 'delete_card' | 'delete_memory';
+  target_id: string;
+  title: string;
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected';
+  created_at: string;
+  resolved_at: string | null;
+}
+
 export interface Briefing {
   id: string;
   kind: 'morning' | 'tracker';
@@ -173,6 +184,11 @@ export interface Store {
   listSuggestions(status?: Suggestion['status']): Promise<Suggestion[]>;
   createSuggestion(s: Omit<Suggestion, 'id' | 'created_at' | 'status'>): Promise<Suggestion>;
   updateSuggestion(id: string, patch: Partial<Suggestion>): Promise<void>;
+
+  listPendingActions(status?: PendingAction['status']): Promise<PendingAction[]>;
+  getPendingAction(id: string): Promise<PendingAction | null>;
+  createPendingAction(a: Pick<PendingAction, 'action' | 'target_id' | 'title' | 'reason'>): Promise<PendingAction>;
+  resolvePendingAction(id: string, status: 'approved' | 'rejected'): Promise<void>;
 
   latestBriefing(kind?: Briefing['kind']): Promise<Briefing | null>;
   listBriefings(limit: number): Promise<Briefing[]>;

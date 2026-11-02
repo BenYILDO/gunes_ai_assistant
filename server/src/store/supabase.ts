@@ -9,6 +9,7 @@ import type {
   EventItem,
   JournalEntry,
   Memory,
+  PendingAction,
   MemoryKind,
   NewCard,
   NewEvent,
@@ -109,6 +110,24 @@ export class SupabaseStore implements Store {
   }
   async updateSuggestion(id: string, patch: Partial<Suggestion>) {
     must(await this.db.from('suggestions').update(patch).eq('id', id), 'suggestion update');
+  }
+
+  async listPendingActions(status?: PendingAction['status']) {
+    let q = this.db.from('pending_actions').select('*').order('created_at', { ascending: false }).limit(50);
+    if (status) q = q.eq('status', status);
+    return must(await q, 'pending actions') as PendingAction[];
+  }
+  async getPendingAction(id: string) {
+    return must(await this.db.from('pending_actions').select('*').eq('id', id).maybeSingle(), 'pending action') as PendingAction | null;
+  }
+  async createPendingAction(a: Pick<PendingAction, 'action' | 'target_id' | 'title' | 'reason'>) {
+    return must(await this.db.from('pending_actions').insert(a).select().single(), 'pending action insert') as PendingAction;
+  }
+  async resolvePendingAction(id: string, status: 'approved' | 'rejected') {
+    must(
+      await this.db.from('pending_actions').update({ status, resolved_at: new Date().toISOString() }).eq('id', id),
+      'pending action resolve',
+    );
   }
 
   async latestBriefing(kind?: Briefing['kind']) {

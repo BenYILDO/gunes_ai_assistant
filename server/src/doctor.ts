@@ -33,7 +33,13 @@ try {
 if (hasSupabase) {
   try {
     await getStore().listProjects();
-    okMark('Supabase bağlantısı ve şema tamam');
+    try {
+      await getStore().listPendingActions();
+      okMark('Supabase bağlantısı ve şema tamam');
+    } catch {
+      bad("Supabase: 'pending_actions' tablosu yok → supabase/migrations/0002_pending_actions.sql dosyasını SQL Editor'de çalıştırın");
+      problems++;
+    }
   } catch (e) {
     // Ağ hatası mı, şema hatası mı? Doğrudan deneyip nedeni göster.
     const cause = await fetch(`${config.supabaseUrl}/rest/v1/`)

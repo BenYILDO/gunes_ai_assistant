@@ -159,6 +159,37 @@ export function apiRouter() {
     }),
   );
 
+  // ---------- Onay bekleyen eylemler (Güneş önerir, kullanıcı onaylar)
+  r.get(
+    '/actions',
+    wrap(async (_req, res) => res.json(await store.listPendingActions('pending'))),
+  );
+  r.post(
+    '/actions/:id/:decision',
+    wrap(async (req, res) => {
+      const a = await store.getPendingAction(p(req));
+      if (!a || a.status !== 'pending') return void res.status(404).json({ error: 'Bekleyen eylem bulunamadı.' });
+      const decision = String(req.params.decision);
+      if (decision === 'approve') {
+        try {
+          if (a.action === 'delete_card') await store.deleteCard(a.target_id);
+          else await store.deleteMemory(a.target_id);
+        } catch (e) {
+          return void res.status(400).json({ error: (e as Error).message });
+        }
+        await store.resolvePendingAction(a.id, 'approved');
+      } else if (decision === 'reject') {
+        await store.resolvePendingAction(a.id, 'rejected');
+        await store.createMemory({
+          kind: 'lesson',
+          content: `"${a.title}" kaydını silmeyi önermiştim (${a.reason}) ama kullanıcı reddetti; bu kayıt kalmalı.`,
+          importance: 3,
+        });
+      } else return void res.status(400).json({ error: 'Geçersiz karar.' });
+      res.json({ ok: true });
+    }),
+  );
+
   // ---------- Çalışmalar
   r.post(
     '/run/:kind',

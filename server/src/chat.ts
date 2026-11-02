@@ -24,6 +24,10 @@ const TOOL_TR: Record<string, string> = {
   recall: 'Hatırlamaya çalışıyor',
   search_events: 'Geçmişi tarıyor',
   WebSearch: 'Web\'de araştırıyor',
+  start_scan: 'Taramayı başlatıyor',
+  propose_deletion: 'Silme onayı istiyor',
+  update_memory: 'Hafızasını düzeltiyor',
+  write_journal: 'Günlüğüne yazıyor',
   WebFetch: 'Kaynağı okuyor',
 };
 export const toolLabelTr = (name: string) => TOOL_TR[name.split('__').pop() ?? name] ?? name.split('__').pop() ?? name;

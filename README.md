@@ -48,7 +48,7 @@ Claude panoya ve hafızaya yalnızca **Güneş MCP aracı** (`server/src/mcp.ts`
 
 ### 1. Supabase
 1. [supabase.com](https://supabase.com)'da proje açın.
-2. **SQL Editor**'ü açın, `supabase/migrations/0001_init.sql` dosyasının içeriğini yapıştırın ve **Run**'a basın.
+2. **SQL Editor**'ü açın; `supabase/migrations/` klasöründeki dosyaları **numara sırasıyla** (`0001_…`, `0002_…`) yapıştırıp **Run**'a basın. Güncellemelerle yeni bir migration dosyası gelirse sadece onu çalıştırmanız yeterli.
 3. **Project Settings → API**'den `Project URL` ve `service_role` anahtarını alın. Bunları bir sonraki adımda `.env` dosyasına yazacaksınız. Anahtarı kimseyle paylaşmayın, sohbete de yapıştırmayın.
 
 > Supabase'i atlarsanız Güneş yerel dosya modunda (`data/local-db.json`) çalışır. Bu mod denemek için uygundur.

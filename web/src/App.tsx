@@ -1,6 +1,7 @@
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { api, type Card, type CardStatus, type Suggestion } from './lib/api';
+import { api, type Card, type CardStatus, type PendingAction, type Suggestion } from './lib/api';
+import { Approvals } from './components/Approvals';
 import { usePoll } from './lib/hooks';
 import { phaseOf, relTime, type Phase } from './lib/time';
 import { Board } from './components/Board';
@@ -57,6 +58,7 @@ export default function App() {
   const board = usePoll(() => api.board(), 15000);
   const briefing = usePoll(api.briefing, 30000);
   const suggestions = usePoll(api.suggestions, 30000);
+  const actions = usePoll(api.actions, 20000);
   const memory = usePoll(api.memory, view === 'memory' ? 30000 : 0, [view]);
   const runs = usePoll(api.runs, view === 'history' ? 8000 : 0, [view]);
 
@@ -64,8 +66,10 @@ export default function App() {
     void board.refresh();
     void briefing.refresh();
     void suggestions.refresh();
+    void actions.refresh();
+    void memory.refresh();
     void status.refresh();
-  }, [board, briefing, suggestions, status]);
+  }, [board, briefing, suggestions, actions, memory, status]);
 
   // Çalışma bittiğinde her şeyi yenile, sonucu bildir
   const prevRunning = useRef<string | null>(null);
@@ -144,6 +148,19 @@ export default function App() {
     if (lesson) toast('Anladım, bunu tekrar sormayacağım');
   };
 
+  const resolveAction = async (a: PendingAction, d: 'approve' | 'reject') => {
+    actions.setData((list) => list?.filter((x) => x.id !== a.id) ?? list);
+    try {
+      await api.resolveAction(a.id, d);
+      toast(d === 'approve' ? 'Silindi' : 'Kalıyor — Güneş bunu not etti');
+      void board.refresh();
+      void memory.refresh();
+    } catch (e) {
+      toast((e as Error).message, 'error');
+      void actions.refresh();
+    }
+  };
+
   const run = async (k: 'morning' | 'tracker' | 'backfill') => {
     try {
       await api.run(k);
@@ -211,6 +228,7 @@ export default function App() {
                 exit={{ opacity: 0, transition: { duration: 0.15 } }}
               >
                 <div className="scroll-thin min-h-0 space-y-4 overflow-y-auto pr-1 max-lg:max-h-[45vh]">
+                  <Approvals items={actions.data ?? []} onResolve={(a, d) => void resolveAction(a, d)} />
                   <BriefingPanel
                     briefing={briefing.data?.morning ?? null}
                     updates={briefing.data?.updates ?? []}

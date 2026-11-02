@@ -38,6 +38,14 @@ export interface Suggestion {
   status: string;
   created_at: string;
 }
+export interface PendingAction {
+  id: string;
+  action: 'delete_card' | 'delete_memory';
+  target_id: string;
+  title: string;
+  reason: string;
+  created_at: string;
+}
 export interface Briefing { id: string; kind: 'morning' | 'tracker'; headline: string; content: string; stats: Record<string, number>; created_at: string }
 export interface Memory {
   id: string;
@@ -113,6 +121,8 @@ export const api = {
   activity: (id: string) => req<Activity[]>(`/cards/${id}/activity`),
   briefing: () => req<{ morning: Briefing | null; updates: Briefing[] }>('/briefing'),
   suggestions: () => req<Suggestion[]>('/suggestions'),
+  actions: () => req<PendingAction[]>('/actions'),
+  resolveAction: (id: string, decision: 'approve' | 'reject') => req(`/actions/${id}/${decision}`, json('POST')),
   updateSuggestion: (id: string, status: string, lesson?: string) =>
     req(`/suggestions/${id}`, json('PATCH', { status, lesson })),
   run: (kind: 'morning' | 'tracker' | 'backfill') => req(`/run/${kind}`, json('POST')),

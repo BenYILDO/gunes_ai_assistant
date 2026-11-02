@@ -10,6 +10,7 @@ import type {
   EventItem,
   JournalEntry,
   Memory,
+  PendingAction,
   MemoryKind,
   NewCard,
   NewEvent,
@@ -24,6 +25,7 @@ interface Db {
   card_activity: CardActivity[];
   events: EventItem[];
   suggestions: Suggestion[];
+  pending_actions: PendingAction[];
   briefings: Briefing[];
   agent_runs: AgentRun[];
   sync_state: Record<string, string>;
@@ -39,6 +41,7 @@ const empty = (): Db => ({
   card_activity: [],
   events: [],
   suggestions: [],
+  pending_actions: [],
   briefings: [],
   agent_runs: [],
   sync_state: {},
@@ -199,6 +202,26 @@ export class LocalStore implements Store {
   }
   async updateSuggestion(id: string, patch: Partial<Suggestion>) {
     this.tx((db) => Object.assign(db.suggestions.find((s) => s.id === id) ?? {}, patch));
+  }
+
+  async listPendingActions(status?: PendingAction['status']) {
+    return this.read()
+      .pending_actions.filter((a) => !status || a.status === status)
+      .sort(byDesc('created_at'))
+      .slice(0, 50);
+  }
+  async getPendingAction(id: string) {
+    return this.read().pending_actions.find((a) => a.id === id) ?? null;
+  }
+  async createPendingAction(a: Pick<PendingAction, 'action' | 'target_id' | 'title' | 'reason'>) {
+    return this.tx((db) => {
+      const x: PendingAction = { id: randomUUID(), status: 'pending', created_at: now(), resolved_at: null, ...a };
+      db.pending_actions.push(x);
+      return x;
+    });
+  }
+  async resolvePendingAction(id: string, status: 'approved' | 'rejected') {
+    this.tx((db) => Object.assign(db.pending_actions.find((a) => a.id === id) ?? {}, { status, resolved_at: now() }));
   }
 
   async latestBriefing(kind?: Briefing['kind']) {

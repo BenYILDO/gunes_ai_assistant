@@ -9,6 +9,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { buildBoardContext, ensureSoul, STATUS_TR } from './agents/soul.js';
+import { config } from './config.js';
 import { getStore, type Card, type CardStatus, type SourceRef } from './store/index.js';
 
 const store = getStore();
@@ -350,6 +351,64 @@ server.registerTool(
   async (a) => {
     await store.createBriefing({ kind: a.kind, headline: a.headline, content: a.content, stats: a.stats });
     return ok('Brifing kaydedildi.');
+  },
+);
+
+// ---------------------------------------------------------------- Sohbete özel eylemler
+// (Ajan çalışmalarında kapalıdır; bkz. runner.ts → toolPreset)
+server.registerTool(
+  'start_scan',
+  {
+    description:
+      "Outlook/Teams taramasını arka planda başlatır. morning: son 24 saat + takvim + sabah brifingi; tracker: son taramadan bu yana gelenler. Kullanıcı açıkça 'tara' dediğinde kullan. Birkaç dakika sürer; sonuç panoya ve brifinge düşer, beklemene gerek yok.",
+    inputSchema: { kind: z.enum(['morning', 'tracker']).default('tracker') },
+  },
+  async ({ kind }) => {
+    try {
+      const res = await fetch(`http://127.0.0.1:${config.port}/api/run/${kind}`, { method: 'POST' });
+      if (!res.ok) return fail(`Tarama başlatılamadı (HTTP ${res.status}).`);
+      return ok(
+        `${kind === 'morning' ? 'Sabah taraması' : 'Gelişme taraması'} başlatıldı. Başka bir çalışma sürüyorsa sıraya girdi. Sonuçlar birkaç dakika içinde panoya ve brifinge düşecek; başlıktaki durum satırından izlenebilir.`,
+      );
+    } catch {
+      return fail('Güneş sunucusuna ulaşılamadı (npm start çalışıyor mu?).');
+    }
+  },
+);
+
+server.registerTool(
+  'propose_deletion',
+  {
+    description:
+      'Bir kartın ya da hafıza kaydının silinmesini ÖNERİR. Silme işlemini sen yapmazsın; kullanıcı arayüzde onaylarsa silinir. Kullanıcı silmek istediğini söylediğinde ya da kayıt açıkça yanlış/tekrar ise kullan.',
+    inputSchema: {
+      target: z.enum(['card', 'memory']),
+      id: z.string().describe('Kart veya hafıza kaydının id’si (ilk 8 karakter yeterli)'),
+      reason: z.string().min(3).describe('Neden silinmeli'),
+    },
+  },
+  async ({ target, id, reason }) => {
+    try {
+      let targetId: string;
+      let title: string;
+      if (target === 'card') {
+        const c = await resolveCard(id);
+        targetId = c.id;
+        title = c.title;
+      } else {
+        const m = (await store.listMemories()).find((x) => x.id.startsWith(id.trim()));
+        if (!m) return fail('Hafıza kaydı bulunamadı.');
+        if (m.locked) return fail('Bu kayıt ruhun çekirdeği; silinemez.');
+        targetId = m.id;
+        title = `${m.key ? `${m.key}: ` : ''}${m.content.slice(0, 80)}`;
+      }
+      const pending = await store.listPendingActions('pending');
+      if (pending.some((p) => p.target_id === targetId)) return ok('Bu kayıt için zaten onay bekleyen bir silme önerisi var.');
+      await store.createPendingAction({ action: target === 'card' ? 'delete_card' : 'delete_memory', target_id: targetId, title, reason });
+      return ok(`Silme önerisi oluşturuldu: "${title}". Kullanıcı panodaki "Onayınızı bekliyor" bölümünden onaylayınca silinecek.`);
+    } catch (e) {
+      return fail((e as Error).message);
+    }
   },
 );
 
