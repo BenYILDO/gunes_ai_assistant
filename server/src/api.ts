@@ -1,5 +1,7 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
-import { config, hasSupabase } from './config.js';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { config, DATA_DIR, hasSupabase } from './config.js';
 import { runJob, runState, STAT_TR, type JobKind } from './agents/pipeline.js';
 import { STATUS_TR } from './agents/soul.js';
 import { chatHandler } from './chat.js';
@@ -115,6 +117,17 @@ export function apiRouter() {
       });
     }),
   );
+
+  // ---------- Ses tanılama raporu (data/diag-voice.json)
+  r.post('/diag/voice', (req, res) => {
+    try {
+      writeFileSync(join(DATA_DIR, 'diag-voice.json'), JSON.stringify(req.body ?? {}, null, 2));
+      console.log('[güneş] ses tanılama raporu yazıldı: data/diag-voice.json');
+    } catch {
+      /* yoksay */
+    }
+    res.json({ ok: true });
+  });
 
   // ---------- Gün sonu
   r.get(

@@ -22,6 +22,7 @@ import { VoiceBriefing } from './components/VoiceBriefing';
 import { buildScript, type Segment, type SegmentAction } from './lib/voiceScript';
 import { listener, micPreference } from './lib/listener';
 import { currentSpeech, voiceTest } from './lib/speech';
+import { runVoiceDiag } from './lib/voiceDiag';
 import { isEcho, parseIntent, stripWake } from './lib/voiceCommands';
 import { NudgePopup } from './components/NudgePopup';
 import { Sky } from './components/Sky';
@@ -457,6 +458,17 @@ export default function App() {
                   onRun={(k) => void run(k)}
                   onGoBoard={() => setView('board')}
                   onVoice={() => startVoice()}
+                  onVoiceDiag={async () => {
+                    toast('Ses tanılama çalışıyor… (birkaç kısa "test" sesi ve bir bip duyabilirsiniz)');
+                    const r = await runVoiceDiag();
+                    await api.diagVoice(r).catch(() => undefined);
+                    const ok = r.tries.filter((t) => t.started).map((t) => t.voice);
+                    const bad = r.tries.filter((t) => !t.started).map((t) => `${t.voice}: ${t.error}`);
+                    toast(
+                      `Bip: ${r.beep.ok ? 'çalıştı' : 'çalışmadı (' + r.beep.state + ')'} · Çalışan sesler: ${ok.join(', ') || 'yok'}${bad.length ? ` · Sorunlu: ${bad.join('; ')}` : ''} — rapor: data\\diag-voice.json`,
+                      ok.length ? 'ok' : 'error',
+                    );
+                  }}
                   onVoiceTest={async () => {
                     const r = await voiceTest(user ? `${user.name} ${user.title}` : '');
                     if (!r.ok) toast('Bu tarayıcı sesli okumayı desteklemiyor', 'error');

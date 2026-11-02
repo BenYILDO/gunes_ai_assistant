@@ -188,6 +188,7 @@ export const api = {
   endDay: () => req<DayEndResult>('/day/end', json('POST')),
   closeApp: () => req('/app/close', json('POST')),
   dayState: () => req<{ dayEnded: string | null }>('/day/state'),
+  diagVoice: (report: unknown) => req('/diag/voice', json('POST', report)),
   briefingFollowup: (unanswered: string[], skipped: boolean) => req<{ ok: boolean; id: string }>('/briefing/followup', json('POST', { unanswered, skipped })),
   seenNudge: (id: string) => req(`/nudges/${id}/seen`, json('POST')),
   presence: (visible: boolean) => req('/presence', json('POST', { visible })),

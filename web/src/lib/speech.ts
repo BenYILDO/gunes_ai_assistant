@@ -23,17 +23,64 @@ export const setVoiceEnabled = (on: boolean) => {
 const MALE = /ahmet|tolga|emre|erkek|male/i;
 
 /** En iyi Türkçe kadın sesi: Emel (doğal) → diğer doğal kadın sesleri → herhangi bir Türkçe ses */
-export function pickVoice(): SpeechSynthesisVoice | null {
-  if (!('speechSynthesis' in window)) return null;
+const BAD_KEY = 'gunes.badVoices';
+const GOOD_KEY = 'gunes.goodVoice';
+const readJSON = <T,>(k: string, d: T): T => {
+  try {
+    return JSON.parse(localStorage.getItem(k) ?? '') as T;
+  } catch {
+    return d;
+  }
+};
+/** Başlamayan sesler (ör. şirket ağında engellenen bulut "Online" sesleri) bir daha denenmez */
+export const markBadVoice = (name: string) => {
+  const bad = new Set(readJSON<string[]>(BAD_KEY, []));
+  bad.add(name);
+  try {
+    localStorage.setItem(BAD_KEY, JSON.stringify([...bad]));
+    if (localStorage.getItem(GOOD_KEY) === name) localStorage.removeItem(GOOD_KEY);
+  } catch {
+    /* yoksay */
+  }
+};
+const markGoodVoice = (name: string) => {
+  try {
+    localStorage.setItem(GOOD_KEY, name);
+  } catch {
+    /* yoksay */
+  }
+};
+export const resetVoicePrefs = () => {
+  try {
+    localStorage.removeItem(BAD_KEY);
+    localStorage.removeItem(GOOD_KEY);
+  } catch {
+    /* yoksay */
+  }
+};
+
+/** Denenecek sesler sırasıyla: çalıştığı bilinen → Emel (doğal) → doğal kadın → yerel kadın → herhangi Türkçe */
+export function voiceCandidates(): SpeechSynthesisVoice[] {
+  if (!('speechSynthesis' in window)) return [];
   const tr = window.speechSynthesis.getVoices().filter((v) => v.lang.toLowerCase().startsWith('tr'));
-  return (
-    tr.find((v) => /emel/i.test(v.name) && /natural|online/i.test(v.name)) ??
-    tr.find((v) => /emel/i.test(v.name)) ??
-    tr.find((v) => /natural|online/i.test(v.name) && !MALE.test(v.name)) ??
-    tr.find((v) => !MALE.test(v.name)) ??
-    tr[0] ??
-    null
-  );
+  const bad = new Set(readJSON<string[]>(BAD_KEY, []));
+  const good = (() => {
+    try {
+      return localStorage.getItem(GOOD_KEY);
+    } catch {
+      return null;
+    }
+  })();
+  const score = (v: SpeechSynthesisVoice) =>
+    (v.name === good ? 0 : 10) +
+    (/emel/i.test(v.name) ? 0 : 4) +
+    (MALE.test(v.name) ? 6 : 0) +
+    (/natural|online/i.test(v.name) ? 0 : 1);
+  return tr.filter((v) => !bad.has(v.name)).sort((a, b) => score(a) - score(b));
+}
+
+export function pickVoice(): SpeechSynthesisVoice | null {
+  return voiceCandidates()[0] ?? null;
 }
 
 function whenVoices(fn: () => void) {
@@ -75,35 +122,57 @@ let token = 0;
 let lastStartAt = 0;
 let lastError = '';
 
-/** Tek bir cümleyi okur. */
-function utter(text: string, rate: number, pitch: number) {
-  return new Promise<void>((resolve) => {
+/** Tek bir cümleyi verilen sesle okur; "started" = ses motoru gerçekten başladı mı */
+function utterWith(text: string, voice: SpeechSynthesisVoice | null, rate: number, pitch: number) {
+  return new Promise<{ started: boolean; error?: string }>((resolve) => {
     const synth = window.speechSynthesis;
     const u = new SpeechSynthesisUtterance(text);
     u.lang = 'tr-TR';
-    const v = pickVoice();
-    if (v) u.voice = v;
+    if (voice) u.voice = voice;
     u.rate = rate;
     u.pitch = pitch;
     u.volume = 1;
+    let started = false;
     let finished = false;
-    const done = () => {
+    const done = (error?: string) => {
       if (finished) return;
       finished = true;
-      resolve();
+      resolve({ started, error });
     };
     u.onstart = () => {
+      started = true;
       lastStartAt = Date.now();
     };
-    u.onend = done;
+    u.onend = () => done();
     u.onerror = (e) => {
       lastError = (e as SpeechSynthesisErrorEvent).error ?? 'bilinmeyen';
-      done();
+      done(lastError);
     };
     synth.speak(u);
     synth.resume(); // Chromium bazen kuyruğu duraklatılmış bırakır
-    setTimeout(done, Math.max(3500, text.length * 120)); // onend gelmezse
+    // 2,5 sn içinde başlamazsa bu ses çalışmıyor say
+    setTimeout(() => {
+      if (!started) {
+        synth.cancel();
+        done('başlamadı');
+      }
+    }, 2500);
+    setTimeout(() => done(), Math.max(4000, text.length * 120)); // onend gelmezse
   });
+}
+
+/** Tek bir cümleyi okur; ses başlamazsa sıradaki sese (sonunda varsayılan sese) geçer ve çalışanı hatırlar. */
+async function utter(text: string, rate: number, pitch: number) {
+  const candidates: (SpeechSynthesisVoice | null)[] = [...voiceCandidates().slice(0, 4), null];
+  for (const v of candidates) {
+    const r = await utterWith(text, v, rate, pitch);
+    if (r.started) {
+      if (v) markGoodVoice(v.name);
+      return;
+    }
+    if (v) markBadVoice(v.name);
+    await new Promise((res) => setTimeout(res, 120));
+  }
 }
 
 /** Okur ve bitince çözülür. Metni cümlelere böler (Chromium uzun metinleri yarıda kesebiliyor). */

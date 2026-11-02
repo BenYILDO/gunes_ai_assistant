@@ -64,6 +64,7 @@ interface Props {
   onGoBoard: () => void;
   onVoice: () => void;
   onVoiceTest: () => void;
+  onVoiceDiag: () => void;
 }
 
 const TILES = [
@@ -115,6 +116,9 @@ export function BriefingView(p: Props) {
                 </motion.button>
                 <button onClick={p.onVoiceTest} className="rounded-xl border border-line px-3 py-1.5 text-xs text-ink-dim hover:text-ink" title="Güneş kısa bir cümle okur; hangi sesi kullandığını gösterir">
                   Ses testi
+                </button>
+                <button onClick={p.onVoiceDiag} className="rounded-xl border border-line px-3 py-1.5 text-xs text-ink-faint hover:text-ink" title="Tüm Türkçe sesleri dener, raporu data\diag-voice.json dosyasına yazar">
+                  Ses tanılama
                 </button>
                 {briefing && <span className="text-[11px] text-ink-faint">Brifing {relTime(briefing.created_at)} hazırlandı</span>}
               </div>
