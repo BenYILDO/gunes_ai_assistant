@@ -26,11 +26,13 @@ export function WikiView({
   onOpenCard,
   onBuild,
   building,
+  onSelect,
 }: {
   pages: WikiPageMeta[];
   onOpenCard: (id: string) => void;
   onBuild: () => void;
   building: boolean;
+  onSelect?: (page: { slug: string; title: string }) => void;
 }) {
   const [slug, setSlug] = useState<string | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
@@ -47,7 +49,10 @@ export function WikiView({
     setMissing(null);
     api
       .wikiPage(slug)
-      .then(setDetail)
+      .then((d) => {
+        setDetail(d);
+        onSelect?.({ slug: d.page.slug, title: d.page.title });
+      })
       .catch(() => {
         setDetail(null);
         setMissing(slug);

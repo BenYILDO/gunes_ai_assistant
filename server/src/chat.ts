@@ -41,6 +41,49 @@ const TOOL_TR: Record<string, string> = {
   write_journal: 'Günlüğüne yazıyor',
   WebFetch: 'Kaynağı okuyor',
 };
+/** Bir sohbette en son gönderilen referans (aynı bağlam her mesajda tekrar gönderilmesin) */
+const lastRef = new Map<string, string>();
+
+interface ChatRef {
+  kind: 'card' | 'wiki';
+  id: string;
+  title: string;
+}
+
+const STATUS_TR: Record<string, string> = { inbox: 'Gelen', todo: 'Yapılacak', doing: 'Devam ediyor', waiting: 'Beklemede', review: 'Kapatılabilir', done: 'Bitti' };
+
+/** Seçili kart/wiki sayfasının ayrıntıları — modele bağlam olarak verilir */
+async function refContext(ref: ChatRef): Promise<string | null> {
+  const store = getStore();
+  if (ref.kind === 'card') {
+    const c = await store.getCard(ref.id);
+    if (!c) return null;
+    const project = c.project_id ? (await store.listProjects()).find((p) => p.id === c.project_id)?.name : null;
+    const activity = (await store.listActivity(c.id)).slice(0, 5);
+    return [
+      `Kullanıcı panoda şu KARTI seçmiş; mesajı büyük ihtimalle bu kartla ilgili ("bu", "bunu" derse bu karttır):`,
+      `[${c.id.slice(0, 8)}] "${c.title}" · ${STATUS_TR[c.status]} · öncelik: ${c.priority}` +
+        (project ? ` · proje: ${project}` : '') +
+        (c.requested_by ? ` · isteyen: ${c.requested_by}` : '') +
+        (c.due_date ? ` · son tarih: ${c.due_date}` : '') +
+        (c.wiki_slug ? ` · wiki: [[${c.wiki_slug}]]` : ''),
+      c.description ? `Açıklama: ${c.description.slice(0, 1500)}` : '',
+      c.people.length ? `Kişiler: ${c.people.join(', ')}` : '',
+      c.sources.length ? `Kaynaklar: ${c.sources.slice(-5).map((s) => `${s.type}: ${s.title ?? ''}${s.date ? ` (${s.date.slice(0, 10)})` : ''}`).join('; ')}` : '',
+      activity.length ? `Son hareketler: ${activity.map((a) => `${a.created_at.slice(0, 10)} ${a.message}`).join(' | ')}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
+  }
+  const p = await store.getWikiPage(ref.id);
+  if (!p) return null;
+  return [
+    `Kullanıcı wiki'de şu SAYFAYI görüntülüyor; mesajı büyük ihtimalle bununla ilgili:`,
+    `[[${p.slug}]] "${p.title}" (${p.kind}) — ${p.summary}`,
+    p.content.slice(0, 2500) + (p.content.length > 2500 ? '\n… (devamı için wiki_read)' : ''),
+  ].join('\n');
+}
+
 export const toolLabelTr = (name: string) => TOOL_TR[name.split('__').pop() ?? name] ?? name.split('__').pop() ?? name;
 
 /** POST /api/chat — Server-Sent Events ile canlı cevap akışı. */
@@ -67,17 +110,33 @@ export async function chatHandler(req: Request, res: Response) {
   if (seeded) await markSeen(session!.id, store);
   if (!session) session = await store.createChatSession(randomUUID(), message.slice(0, 60));
   send({ type: 'session', id: session.id, title: session.title });
-  await store.addChatMessage({ session_id: session.id, role: 'user', content: message, tools: [] });
+  const ref = req.body?.ref && typeof req.body.ref.id === 'string' ? (req.body.ref as ChatRef) : null;
+  const refTag = ref ? `ref:${ref.kind === 'card' ? 'Kart' : 'Wiki'}: ${String(ref.title).slice(0, 120)}` : null;
+  await store.addChatMessage({ session_id: session.id, role: 'user', content: message, tools: refTag ? [refTag] : [] });
+
+  // Seçili bağlam: bu sohbette ilk kez ya da değiştiyse mesajın önüne eklenir
+  let refText = '';
+  if (ref) {
+    const key = `${ref.kind}:${ref.id}`;
+    if (isNew || lastRef.get(session.id) !== key) {
+      const ctx = await refContext(ref).catch(() => null);
+      if (ctx) {
+        refText = `(SEÇİLİ BAĞLAM)\n${ctx}\n---\n`;
+        lastRef.set(session.id, key);
+      }
+    }
+  }
+  const userMessage = refText + message;
 
   const tools: string[] = [];
   const run = async (fresh: boolean): Promise<RunResult> => {
     const prompt = fresh
       ? `${chatSystemContext(await buildMemoryContext(store, { compact: true }), await buildBoardContext(store), await buildWikiIndex(store))}\n\n---\n\n${
           seeded
-            ? `(Bu sohbeti SEN başlattın; kullanıcıya şunu yazmıştın:)\n"${prior.map((m) => m.content).join('\n')}"\n\nKullanıcının cevabı:\n${message}`
-            : message
+            ? `(Bu sohbeti SEN başlattın; kullanıcıya şunu yazmıştın:)\n"${prior.map((m) => m.content).join('\n')}"\n\nKullanıcının cevabı:\n${userMessage}`
+            : userMessage
         }`
-      : message;
+      : userMessage;
     return runClaude({
       prompt,
       model: config.modelChat,

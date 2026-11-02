@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowUp, ChevronDown, Loader2, MessageSquarePlus, Square, Trash2, X } from 'lucide-react';
+import { ArrowUp, BookOpen, ChevronDown, Loader2, MessageSquarePlus, Paperclip, SquareKanban, Square, Trash2, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { api, streamChat, type ChatMessage, type ChatSession } from '../lib/api';
+import { api, streamChat, type ChatMessage, type ChatRef, type ChatSession } from '../lib/api';
 import { relTime, type Phase } from '../lib/time';
 import { Markdown } from './Markdown';
 import { SunCore } from './SunCore';
@@ -18,12 +18,17 @@ interface Props {
   onEndDay?: () => void;
   /** Sesli komut ya da brifingden gelen mesaj (açılınca gönderilir) */
   externalMessage?: { id: number; text: string } | null;
+  /** Panoda/wiki'de seçili olan şey: mesajla birlikte bağlam olarak gider */
+  chatRef?: ChatRef | null;
+  onClearRef?: () => void;
 }
 
 interface LiveMsg extends Omit<ChatMessage, 'id' | 'created_at'> {
   id: string;
   live?: boolean;
 }
+
+const refTag = (r: ChatRef) => `ref:${r.kind === 'card' ? 'Kart' : 'Wiki'}: ${r.title}`;
 
 const STARTERS = [
   'Bugün neye odaklanmalıyım?',
@@ -32,7 +37,7 @@ const STARTERS = [
   'Rakiplerimiz depo otomasyonunda neler yapıyor? Araştır',
 ];
 
-export function ChatPanel({ open, phase, userName, onClose, onActivity, focusSession, onEndDay, externalMessage }: Props) {
+export function ChatPanel({ open, phase, userName, onClose, onActivity, focusSession, onEndDay, externalMessage, chatRef, onClearRef }: Props) {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<LiveMsg[]>([]);
@@ -88,7 +93,7 @@ export function ChatPanel({ open, phase, userName, onClose, onActivity, focusSes
     const liveId = `live-${Date.now()}`;
     setMessages((m) => [
       ...m,
-      { id: `u-${Date.now()}`, session_id: sessionId ?? '', role: 'user', content: msg, tools: [] },
+      { id: `u-${Date.now()}`, session_id: sessionId ?? '', role: 'user', content: msg, tools: chatRef ? [refTag(chatRef)] : [] },
       { id: liveId, session_id: sessionId ?? '', role: 'assistant', content: '', tools: [], live: true },
     ]);
     const patch = (fn: (m: LiveMsg) => LiveMsg) => setMessages((all) => all.map((m) => (m.id === liveId ? fn(m) : m)));
@@ -97,7 +102,7 @@ export function ChatPanel({ open, phase, userName, onClose, onActivity, focusSes
     let usedTools = false;
     try {
       await streamChat(
-        { sessionId, message: msg },
+        { sessionId, message: msg, ref: chatRef ?? null },
         (e) => {
           if (e.type === 'session') setSessionId(e.id);
           else if (e.type === 'text') patch((m) => ({ ...m, content: m.content + e.text }));
@@ -251,8 +256,17 @@ export function ChatPanel({ open, phase, userName, onClose, onActivity, focusSes
                   className={m.role === 'user' ? 'flex justify-end' : 'flex gap-2.5'}
                 >
                   {m.role === 'user' ? (
-                    <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md border border-[color:var(--accent)]/30 bg-[color:var(--accent)]/12 px-3.5 py-2 text-sm">
-                      {m.content}
+                    <div className="flex max-w-[85%] flex-col items-end gap-1">
+                      {m.tools
+                        .filter((t) => t.startsWith('ref:'))
+                        .map((t) => (
+                          <span key={t} className="inline-flex max-w-full items-center gap-1 truncate rounded-md bg-white/[0.06] px-1.5 py-0.5 text-[10.5px] text-ink-faint">
+                            <Paperclip size={10} /> {t.slice(4)}
+                          </span>
+                        ))}
+                      <div className="whitespace-pre-wrap rounded-2xl rounded-br-md border border-[color:var(--accent)]/30 bg-[color:var(--accent)]/12 px-3.5 py-2 text-sm">
+                        {m.content}
+                      </div>
                     </div>
                   ) : (
                     <>
@@ -314,6 +328,26 @@ export function ChatPanel({ open, phase, userName, onClose, onActivity, focusSes
                 void send(input);
               }}
             >
+              <AnimatePresence>
+                {chatRef && (
+                  <motion.div
+                    key={chatRef.kind + chatRef.id}
+                    initial={{ opacity: 0, y: 6, height: 0 }}
+                    animate={{ opacity: 1, y: 0, height: 'auto' }}
+                    exit={{ opacity: 0, y: 6, height: 0 }}
+                    className="mb-2 overflow-hidden"
+                  >
+                    <div className="flex items-center gap-2 rounded-xl border border-[color:var(--accent)]/35 bg-[color:var(--accent)]/10 px-2.5 py-1.5" title="Mesajınız bu konuyla ilgili olarak gönderilir">
+                      {chatRef.kind === 'card' ? <SquareKanban size={13} className="shrink-0 text-accent" /> : <BookOpen size={13} className="shrink-0 text-accent" />}
+                      <span className="shrink-0 text-[10.5px] uppercase tracking-wider text-accent">{chatRef.kind === 'card' ? 'Kart' : 'Wiki'}</span>
+                      <span className="min-w-0 flex-1 truncate text-xs text-ink">{chatRef.title}</span>
+                      <button type="button" onClick={onClearRef} className="shrink-0 rounded p-0.5 text-ink-faint hover:bg-white/10 hover:text-ink" title="Referansı kaldır">
+                        <X size={13} />
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
               <div className="flex items-end gap-2 rounded-2xl border border-line bg-black/25 p-1.5 pl-3.5 transition-colors focus-within:border-[color:var(--accent)]/55">
                 <textarea
                   ref={inputRef}

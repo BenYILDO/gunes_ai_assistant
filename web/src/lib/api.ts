@@ -217,8 +217,14 @@ export type ChatStreamEvent =
   | { type: 'done'; text: string; isError: boolean };
 
 /** POST /api/chat SSE akışını okur. */
+export interface ChatRef {
+  kind: 'card' | 'wiki';
+  id: string;
+  title: string;
+}
+
 export async function streamChat(
-  body: { sessionId?: string | null; message: string },
+  body: { sessionId?: string | null; message: string; ref?: ChatRef | null },
   onEvent: (e: ChatStreamEvent) => void,
   signal?: AbortSignal,
 ) {

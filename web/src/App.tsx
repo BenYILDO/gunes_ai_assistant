@@ -1,6 +1,6 @@
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { api, type Card, type CardStatus, type Nudge, type PendingAction, type Suggestion, type WeatherKind } from './lib/api';
+import { api, type Card, type CardStatus, type ChatRef, type Nudge, type PendingAction, type Suggestion, type WeatherKind } from './lib/api';
 import { buildAgenda } from './lib/agenda';
 import { voiceEnabled as voiceEnabledNow } from './lib/speech';
 import { Approvals } from './components/Approvals';
@@ -123,6 +123,7 @@ export default function App() {
   const [intro, setIntro] = useState(shouldPlayIntro);
   const [introReady, setIntroReady] = useState(false);
   const [openCardId, setOpenCardId] = useState<string | null>(null);
+  const [chatRef, setChatRef] = useState<ChatRef | null>(null);
   const [focusMode, setFocusMode] = useLocalFlag('gunes.boardFocus', false);
 
   const status = usePoll(api.status, 4000);
@@ -344,6 +345,10 @@ export default function App() {
   const cards = board.data?.cards ?? [];
   const projects = board.data?.projects ?? [];
   const openCard = cards.find((c) => c.id === openCardId) ?? null;
+  // Açılan kart sohbetin bağlamı olur (çarpıyla kaldırılabilir)
+  useEffect(() => {
+    if (openCard) setChatRef({ kind: 'card', id: openCard.id, title: openCard.title });
+  }, [openCard?.id, openCard?.title]);
   const user = status.data?.user;
 
   const agenda = useMemo(() => buildAgenda(today.data), [today.data]);
@@ -535,7 +540,7 @@ export default function App() {
             )}
             {view === 'wiki' && (
               <motion.div key="wiki" className="h-full" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.15 } }}>
-                <WikiView pages={wiki.data ?? []} onOpenCard={setOpenCardId} onBuild={() => void run('wiki')} building={running === 'wiki'} />
+                <WikiView pages={wiki.data ?? []} onOpenCard={setOpenCardId} onBuild={() => void run('wiki')} building={running === 'wiki'} onSelect={(p) => setChatRef({ kind: 'wiki', id: p.slug, title: p.title })} />
               </motion.div>
             )}
             {view === 'memory' && (
@@ -564,6 +569,8 @@ export default function App() {
         onActivity={refreshAll}
         onEndDay={() => setFarewell(true)}
         externalMessage={chatExternal}
+        chatRef={chatRef}
+        onClearRef={() => setChatRef(null)}
       />
 
       <AnimatePresence>
