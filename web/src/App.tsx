@@ -23,6 +23,8 @@ import { buildScript, type Segment, type SegmentAction } from './lib/voiceScript
 import { listener, micPreference } from './lib/listener';
 import { currentSpeech, setTtsProvider, voiceTest } from './lib/speech';
 import { runVoiceDiag } from './lib/voiceDiag';
+import { getSettings } from './lib/settings';
+import { SettingsPanel } from './components/SettingsPanel';
 import { isEcho, parseIntent, stripWake } from './lib/voiceCommands';
 import { NudgePopup } from './components/NudgePopup';
 import { Sky } from './components/Sky';
@@ -35,7 +37,10 @@ const INTRO_KEY = 'gunes.introDay';
 
 /** Karşılama her açılışta (yükleme ekranı gibi) oynar; ?intro=0 ile kapatılabilir. */
 function shouldPlayIntro() {
-  return params.get('intro') !== '0';
+  if (params.get('intro') === '1') return true;
+  if (params.get('intro') === '0') return false;
+  const mode = getSettings().introMode;
+  return mode === 'always' || (mode === 'daily' && firstOpenToday());
 }
 
 /** Sesli karşılama sadece günün ilk açılışında yapılır (sonrakiler sessiz). */
@@ -48,7 +53,7 @@ function firstOpenToday() {
 }
 const SPEAK_TODAY = params.get('intro') === '1' || firstOpenToday();
 /** Günün ilk açılışında karşılamadan sonra sesli brifing otomatik başlar (?voice=1 ile zorlanır) */
-const AUTO_VOICE = params.get('voice') === '1' || (SPEAK_TODAY && params.get('voice') !== '0');
+const AUTO_VOICE = params.get('voice') === '1' || (SPEAK_TODAY && params.get('voice') !== '0' && getSettings().autoVoice);
 
 function usePhase(sun?: { sunrise: string | null; sunset: string | null }): Phase {
   const forced = params.get('phase') as Phase | null;
@@ -108,6 +113,7 @@ export default function App() {
     }
   };
   const [farewell, setFarewell] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [voiceSegs, setVoiceSegs] = useState<Segment[] | null>(null);
   const [chatExternal, setChatExternal] = useState<{ id: number; text: string } | null>(null);
   const autoVoiceDone = useRef(false);
@@ -169,6 +175,26 @@ export default function App() {
       }),
     );
   };
+
+  const runDiag = async () => {
+                    toast('Ses tanılama çalışıyor… (birkaç kısa "test" sesi ve bir bip duyabilirsiniz)');
+                    const r = await runVoiceDiag();
+                    await api.diagVoice(r).catch(() => undefined);
+                    const ok = r.tries.filter((t) => t.started).map((t) => t.voice);
+                    const bad = r.tries.filter((t) => !t.started).map((t) => `${t.voice}: ${t.error}`);
+                    toast(
+                      `Bip: ${r.beep.ok ? 'çalıştı' : 'çalışmadı (' + r.beep.state + ')'} · Çalışan sesler: ${ok.join(', ') || 'yok'}${bad.length ? ` · Sorunlu: ${bad.join('; ')}` : ''} — rapor: data\\diag-voice.json`,
+                      ok.length ? 'ok' : 'error',
+                    );
+  };
+
+  const runVoiceTest = async () => {
+                    const r = await voiceTest(user ? `${user.name} ${user.title}` : '');
+                    if (!r.ok) toast('Bu tarayıcı sesli okumayı desteklemiyor', 'error');
+                    else if (!r.turkish.length) toast('Türkçe ses bulunamadı — Windows Ayarlar › Zaman ve dil › Konuşma’dan Türkçe ses ekleyin', 'error');
+                    else if (!r.started) toast(`Ses motoru başlamadı${r.error ? ` (${r.error})` : ''} — Güneş penceresini kapatıp masaüstü simgesinden yeniden açın`, 'error');
+                    else toast(`🔊 ${r.voice}${/emel/i.test(r.voice ?? '') ? '' : ' (Emel bulunamadı)'} · konuşuyor; duymuyorsanız ses karıştırıcısına bakın`);
+                  };
 
   const voiceAction = async (a: SegmentAction) => {
     if (a.kind === 'card_doing') {
@@ -432,6 +458,7 @@ export default function App() {
           showSun={!intro}
           weather={weather.data}
           onEndDay={() => setFarewell(true)}
+          onSettings={() => setSettingsOpen(true)}
         />
 
         {offline && (
@@ -461,24 +488,6 @@ export default function App() {
                   onRun={(k) => void run(k)}
                   onGoBoard={() => setView('board')}
                   onVoice={() => startVoice()}
-                  onVoiceDiag={async () => {
-                    toast('Ses tanılama çalışıyor… (birkaç kısa "test" sesi ve bir bip duyabilirsiniz)');
-                    const r = await runVoiceDiag();
-                    await api.diagVoice(r).catch(() => undefined);
-                    const ok = r.tries.filter((t) => t.started).map((t) => t.voice);
-                    const bad = r.tries.filter((t) => !t.started).map((t) => `${t.voice}: ${t.error}`);
-                    toast(
-                      `Bip: ${r.beep.ok ? 'çalıştı' : 'çalışmadı (' + r.beep.state + ')'} · Çalışan sesler: ${ok.join(', ') || 'yok'}${bad.length ? ` · Sorunlu: ${bad.join('; ')}` : ''} — rapor: data\\diag-voice.json`,
-                      ok.length ? 'ok' : 'error',
-                    );
-                  }}
-                  onVoiceTest={async () => {
-                    const r = await voiceTest(user ? `${user.name} ${user.title}` : '');
-                    if (!r.ok) toast('Bu tarayıcı sesli okumayı desteklemiyor', 'error');
-                    else if (!r.turkish.length) toast('Türkçe ses bulunamadı — Windows Ayarlar › Zaman ve dil › Konuşma’dan Türkçe ses ekleyin', 'error');
-                    else if (!r.started) toast(`Ses motoru başlamadı${r.error ? ` (${r.error})` : ''} — Güneş penceresini kapatıp masaüstü simgesinden yeniden açın`, 'error');
-                    else toast(`🔊 ${r.voice}${/emel/i.test(r.voice ?? '') ? '' : ' (Emel bulunamadı)'} · konuşuyor; duymuyorsanız ses karıştırıcısına bakın`);
-                  }}
                 />
               </motion.div>
             )}
@@ -560,6 +569,8 @@ export default function App() {
       <AnimatePresence>
         {voiceSegs && <VoiceBriefing key="voice" segments={voiceSegs} phase={phase} onAction={voiceAction} onExit={voiceExit} />}
       </AnimatePresence>
+
+      <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} status={status.data} onVoiceTest={() => void runVoiceTest()} onVoiceDiag={() => void runDiag()} />
 
       <EndOfDayPrompt
         open={eodPrompt && !farewell}

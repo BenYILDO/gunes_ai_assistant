@@ -1,3 +1,4 @@
+import { getSettings } from './settings';
 /**
  * Güneş'in sesi: tarayıcının (Edge) kendi Türkçe sesleri — ücretsiz, anahtarsız.
  * Kadın sesi tercih edilir: "Microsoft Emel Online (Natural)".
@@ -148,7 +149,7 @@ let currentAudio: HTMLAudioElement | null = null;
 /** Sunucudan Emel sesini alıp çalar. Başarısızsa false döner (tarayıcı sesine düşülür). */
 async function playNatural(text: string, my: number): Promise<boolean> {
   try {
-    const res = await fetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, voice: getTtsVoice() || undefined }) });
+    const res = await fetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, voice: getTtsVoice() || undefined, rate: getSettings().speechRate }) });
     if (!res.ok) return false;
     const url = URL.createObjectURL(await res.blob());
     if (my !== token) return true; // bu arada iptal edildi
@@ -185,7 +186,8 @@ function utterWith(text: string, voice: SpeechSynthesisVoice | null, rate: numbe
     if (voice) u.voice = voice;
     // Doğal (Natural) olmayan eski seslerde (ör. Tolga) perde/hız nötr: yükseltilmiş perde yapay duyuluyor
     const natural = !voice || /natural|online/i.test(voice.name);
-    u.rate = natural ? rate : 1.05;
+    const k = getSettings().speechRate;
+    u.rate = Math.min(2, (natural ? rate : 1.05) * k);
     u.pitch = natural ? pitch : 1;
     u.volume = 1;
     let started = false;

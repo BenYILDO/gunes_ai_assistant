@@ -23,11 +23,12 @@ export const TTS_VOICES = [
 ];
 
 /** Konuşmaya uygun SSML: cümleler arası doğal duraklama, sorular ayrı cümle. */
-function toSsml(text: string, voiceId: string) {
+function toSsml(text: string, voiceId: string, rate = 1) {
   const v = TTS_VOICES.find((x) => x.id === voiceId);
   const sentences = text.match(/[^.!?…]+[.!?…]*/g)?.map((s) => s.trim()).filter(Boolean) ?? [text];
   const body = sentences.map((s) => esc(s)).join(' <break time="280ms"/> ');
-  const inner = `<prosody rate="${config.ttsRate}" pitch="${config.ttsPitch}">${body}</prosody>`;
+  const pct = Math.round((Math.min(1.6, Math.max(0.7, rate)) - 1) * 100);
+  const inner = `<prosody rate="${pct >= 0 ? '+' : ''}${pct}%" pitch="${config.ttsPitch}">${body}</prosody>`;
   return (
     `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="tr-TR">` +
     `<voice name="${voiceId}">${v?.multilingual ? `<lang xml:lang="tr-TR">${inner}</lang>` : inner}</voice></speak>`
@@ -54,19 +55,19 @@ export class TtsError extends Error {
   }
 }
 
-export async function synthesize(text: string, voiceId?: string): Promise<Buffer> {
+export async function synthesize(text: string, voiceId?: string, rate = 1): Promise<Buffer> {
   if (!ttsEnabled()) throw new TtsError('Azure Speech ayarlı değil', 501);
   const clean = text.replace(/\s+/g, ' ').trim().slice(0, 3000);
   if (!clean) throw new TtsError('Boş metin', 400);
   const voice = TTS_VOICES.some((v) => v.id === voiceId) ? voiceId! : config.ttsVoice;
-  const key = `${voice}|${clean}`;
+  const key = `${voice}|${rate.toFixed(2)}|${clean}`;
   const hit = cache.get(key);
   if (hit) return hit;
 
   const usage = await ttsUsage();
   if (usage.chars + clean.length > usage.limit) throw new TtsError('Aylık ses kotası doldu', 429);
 
-  const ssml = toSsml(clean, voice);
+  const ssml = toSsml(clean, voice, rate);
   const res = await fetch(`https://${config.azureSpeechRegion}.tts.speech.microsoft.com/cognitiveservices/v1`, {
     method: 'POST',
     headers: {

@@ -1,7 +1,6 @@
 import { animate, motion, useMotionValue, useTransform } from 'motion/react';
 import { ArrowRight, CalendarClock, Clock, Flame, Hourglass, Mail, Sunrise, Sunset, Umbrella, Users, Volume2, Zap } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
-import { getTtsVoice, setTtsVoice, speakAsync } from '../lib/speech';
+import { useEffect, useMemo } from 'react';
 import type { AgendaItem } from '../lib/agenda';
 import type { Briefing, PendingAction, Status, Suggestion, Today, Weather } from '../lib/api';
 import { fmtTime, greetingOf, moodLine, relTime, type Phase } from '../lib/time';
@@ -64,32 +63,8 @@ interface Props {
   onRun: (k: 'morning' | 'backfill') => void;
   onGoBoard: () => void;
   onVoice: () => void;
-  onVoiceTest: () => void;
-  onVoiceDiag: () => void;
 }
 
-function VoicePicker({ voices, fallback }: { voices: { id: string; label: string; note: string }[]; fallback: string }) {
-  const [v, setV] = useState(() => getTtsVoice() || fallback);
-  return (
-    <select
-      value={v}
-      onChange={(e) => {
-        setV(e.target.value);
-        setTtsVoice(e.target.value);
-        const label = voices.find((x) => x.id === e.target.value)?.label ?? '';
-        void speakAsync(`Merhaba, ben Güneş. Bu ${label} sesi. Nasıl, beğendiniz mi?`, { force: true });
-      }}
-      title="Güneş'in sesi (seçince örnek okur)"
-      className="h-[30px] rounded-xl border border-line bg-black/25 px-2 text-xs text-ink-dim outline-none"
-    >
-      {voices.map((x) => (
-        <option key={x.id} value={x.id}>
-          Ses: {x.label} — {x.note}
-        </option>
-      ))}
-    </select>
-  );
-}
 
 const TILES = [
   { key: 'urgent', label: 'Öncelikli', icon: Zap, tone: 'var(--danger)' },
@@ -138,13 +113,6 @@ export function BriefingView(p: Props) {
                 >
                   <Volume2 size={13} /> Sesli dinle
                 </motion.button>
-                <button onClick={p.onVoiceTest} className="rounded-xl border border-line px-3 py-1.5 text-xs text-ink-dim hover:text-ink" title="Güneş kısa bir cümle okur; hangi sesi kullandığını gösterir">
-                  Ses testi
-                </button>
-                {p.status?.tts?.provider === 'azure' && p.status.tts.voices && <VoicePicker voices={p.status.tts.voices} fallback={p.status.tts.voice} />}
-                <button onClick={p.onVoiceDiag} className="rounded-xl border border-line px-3 py-1.5 text-xs text-ink-faint hover:text-ink" title="Tüm Türkçe sesleri dener, raporu data\diag-voice.json dosyasına yazar">
-                  Ses tanılama
-                </button>
                 {briefing && <span className="text-[11px] text-ink-faint">Brifing {relTime(briefing.created_at)} hazırlandı</span>}
               </div>
             </div>

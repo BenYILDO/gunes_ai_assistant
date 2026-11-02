@@ -141,6 +141,8 @@ Sonra herhangi bir projede *"Güneş panosunda X kartına ilerleme notu düş"* 
 | `scripts\windows\stop-gunes.ps1` | Sunucuyu durdurur |
 | `scripts\windows\uninstall-autostart.ps1` | Açılıştan kaldırır |
 
+**Ayarlar (⚙️):** Başlıktaki dişli simgesi. Ses (sesli konuşma, sabah sesli brifing, ses seçimi, **okuma hızı**, ses testi ve tanılama, Azure kota durumu), mikrofon, karşılama ekranı (her açılışta / günde bir / kapalı), masaüstü bildirimleri ve bilgi (veri deposu, mesai, modeller). Tercihler bu bilgisayarda saklanır.
+
 **Pano kısayolları:** `F` odak modu (brifing paneli gizlenir, kanban tam ekran) · `Ctrl` + tekerlek ya da `Ctrl +` / `Ctrl -` yakınlaştırma · `Ctrl 0` %100. Sağ alttaki yakınlaştırma çubuğu ve odak modu ayarı hatırlanır.
 
 Arayüz adresine eklenebilen parametreler: `?intro=1` karşılamayı zorla oynatır, `?phase=night` (`dawn|day|dusk|night`) temayı, `?weather=rain` (`clear|partly|clouds|overcast|fog|drizzle|rain|snow|storm`) havayı önizler.

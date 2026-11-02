@@ -145,6 +145,7 @@ export interface Status {
   };
   labels: { status: Record<CardStatus, string>; stats: Record<string, string> };
   usage: Usage | null;
+  models?: { chat: string; think: string; scan: string };
   tts: { provider: 'azure' | 'browser'; voice: string; voices?: { id: string; label: string; note: string }[]; usage: { month: string; chars: number; limit: number } | null };
 }
 

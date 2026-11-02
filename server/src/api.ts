@@ -74,6 +74,7 @@ export function apiRouter() {
         run: runState,
         schedule: await nextRuns(),
         usage: await getUsage(),
+        models: { chat: config.modelChat, think: config.modelThink, scan: config.modelScan },
         tts: { provider: ttsEnabled() ? 'azure' : 'browser', voice: config.ttsVoice, voices: TTS_VOICES, usage: ttsEnabled() ? await ttsUsage() : null },
         labels: { status: STATUS_TR, stats: STAT_TR },
       });
@@ -123,7 +124,7 @@ export function apiRouter() {
   // ---------- Doğal ses (Azure Speech)
   r.post('/tts', async (req, res) => {
     try {
-      const audio = await synthesize(String(req.body?.text ?? ''), req.body?.voice ? String(req.body.voice) : undefined);
+      const audio = await synthesize(String(req.body?.text ?? ''), req.body?.voice ? String(req.body.voice) : undefined, Number(req.body?.rate) || 1);
       res.set({ 'Content-Type': 'audio/mpeg', 'Cache-Control': 'no-store' }).send(audio);
     } catch (e) {
       const err = e as TtsError;
