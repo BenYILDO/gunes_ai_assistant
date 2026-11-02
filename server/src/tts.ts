@@ -12,6 +12,28 @@ const month = () => new Date().toISOString().slice(0, 7);
 
 export const ttsEnabled = () => Boolean(config.azureSpeechKey && config.azureSpeechRegion);
 
+/** Seçilebilir sesler. Çok dilli (Multilingual) sesler Türkçeyi daha canlı tonlamayla konuşur. */
+export const TTS_VOICES = [
+  { id: 'tr-TR-EmelNeural', label: 'Emel', note: 'Türkçe, sakin', multilingual: false },
+  { id: 'en-US-AvaMultilingualNeural', label: 'Ava', note: 'Çok dilli, sıcak ve canlı', multilingual: true },
+  { id: 'en-US-EmmaMultilingualNeural', label: 'Emma', note: 'Çok dilli, neşeli', multilingual: true },
+  { id: 'de-DE-SeraphinaMultilingualNeural', label: 'Seraphina', note: 'Çok dilli, olgun ve yumuşak', multilingual: true },
+  { id: 'fr-FR-VivienneMultilingualNeural', label: 'Vivienne', note: 'Çok dilli, zarif', multilingual: true },
+  { id: 'tr-TR-AhmetNeural', label: 'Ahmet', note: 'Türkçe, erkek', multilingual: false },
+];
+
+/** Konuşmaya uygun SSML: cümleler arası doğal duraklama, sorular ayrı cümle. */
+function toSsml(text: string, voiceId: string) {
+  const v = TTS_VOICES.find((x) => x.id === voiceId);
+  const sentences = text.match(/[^.!?…]+[.!?…]*/g)?.map((s) => s.trim()).filter(Boolean) ?? [text];
+  const body = sentences.map((s) => esc(s)).join(' <break time="280ms"/> ');
+  const inner = `<prosody rate="${config.ttsRate}" pitch="${config.ttsPitch}">${body}</prosody>`;
+  return (
+    `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="tr-TR">` +
+    `<voice name="${voiceId}">${v?.multilingual ? `<lang xml:lang="tr-TR">${inner}</lang>` : inner}</voice></speak>`
+  );
+}
+
 export async function ttsUsage(): Promise<{ month: string; chars: number; limit: number }> {
   try {
     const v = JSON.parse((await getStore().getState(USAGE_KEY)) ?? '{}');
@@ -32,19 +54,19 @@ export class TtsError extends Error {
   }
 }
 
-export async function synthesize(text: string): Promise<Buffer> {
+export async function synthesize(text: string, voiceId?: string): Promise<Buffer> {
   if (!ttsEnabled()) throw new TtsError('Azure Speech ayarlı değil', 501);
   const clean = text.replace(/\s+/g, ' ').trim().slice(0, 3000);
   if (!clean) throw new TtsError('Boş metin', 400);
-  const hit = cache.get(clean);
+  const voice = TTS_VOICES.some((v) => v.id === voiceId) ? voiceId! : config.ttsVoice;
+  const key = `${voice}|${clean}`;
+  const hit = cache.get(key);
   if (hit) return hit;
 
   const usage = await ttsUsage();
   if (usage.chars + clean.length > usage.limit) throw new TtsError('Aylık ses kotası doldu', 429);
 
-  const ssml =
-    `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="tr-TR">` +
-    `<voice name="${config.ttsVoice}"><prosody rate="${config.ttsRate}" pitch="${config.ttsPitch}">${esc(clean)}</prosody></voice></speak>`;
+  const ssml = toSsml(clean, voice);
   const res = await fetch(`https://${config.azureSpeechRegion}.tts.speech.microsoft.com/cognitiveservices/v1`, {
     method: 'POST',
     headers: {
@@ -61,7 +83,7 @@ export async function synthesize(text: string): Promise<Buffer> {
   if (!res.ok) throw new TtsError(`Azure Speech HTTP ${res.status}${res.status === 401 ? ' (anahtar ya da bölge hatalı)' : ''}`, 502);
   const buf = Buffer.from(await res.arrayBuffer());
 
-  cache.set(clean, buf);
+  cache.set(key, buf);
   if (cache.size > 80) cache.delete(cache.keys().next().value!);
   await getStore()
     .setState(USAGE_KEY, JSON.stringify({ month: month(), chars: usage.chars + clean.length }))

@@ -128,12 +128,27 @@ export const setTtsProvider = (p: 'azure' | 'browser') => {
   provider = p;
 };
 export const ttsProvider = () => provider;
+const TTS_VOICE_KEY = 'gunes.ttsVoice';
+export const getTtsVoice = () => {
+  try {
+    return localStorage.getItem(TTS_VOICE_KEY) ?? '';
+  } catch {
+    return '';
+  }
+};
+export const setTtsVoice = (id: string) => {
+  try {
+    localStorage.setItem(TTS_VOICE_KEY, id);
+  } catch {
+    /* yoksay */
+  }
+};
 let currentAudio: HTMLAudioElement | null = null;
 
 /** Sunucudan Emel sesini alıp çalar. Başarısızsa false döner (tarayıcı sesine düşülür). */
 async function playNatural(text: string, my: number): Promise<boolean> {
   try {
-    const res = await fetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
+    const res = await fetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, voice: getTtsVoice() || undefined }) });
     if (!res.ok) return false;
     const url = URL.createObjectURL(await res.blob());
     if (my !== token) return true; // bu arada iptal edildi
@@ -262,7 +277,7 @@ export async function voiceTest(name: string) {
   if (!('speechSynthesis' in window)) return { ok: false, voice: null as string | null, turkish: [] as string[] };
   await new Promise<void>((r) => whenVoices(r));
   const turkish = window.speechSynthesis.getVoices().filter((v) => v.lang.toLowerCase().startsWith('tr')).map((v) => v.name);
-  const voice = provider === 'azure' ? 'Emel (Azure doğal ses)' : (pickVoice()?.name ?? null);
+  const voice = provider === 'azure' ? `${getTtsVoice() || 'Emel'} (Azure doğal ses)` : (pickVoice()?.name ?? null);
   const t0 = Date.now();
   lastError = '';
   void speakAsync(`Merhaba ${name}, sesimi duyuyor musunuz? Ben Güneş.`, { force: true });

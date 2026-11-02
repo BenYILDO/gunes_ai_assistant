@@ -145,7 +145,7 @@ export interface Status {
   };
   labels: { status: Record<CardStatus, string>; stats: Record<string, string> };
   usage: Usage | null;
-  tts: { provider: 'azure' | 'browser'; voice: string; usage: { month: string; chars: number; limit: number } | null };
+  tts: { provider: 'azure' | 'browser'; voice: string; voices?: { id: string; label: string; note: string }[]; usage: { month: string; chars: number; limit: number } | null };
 }
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {

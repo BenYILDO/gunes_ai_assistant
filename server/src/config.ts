@@ -57,8 +57,8 @@ export const config = {
   azureSpeechKey: env('AZURE_SPEECH_KEY'),
   azureSpeechRegion: env('AZURE_SPEECH_REGION', 'westeurope'),
   ttsVoice: env('GUNES_TTS_VOICE', 'tr-TR-EmelNeural'),
-  ttsRate: env('GUNES_TTS_RATE', '-3%'),
-  ttsPitch: env('GUNES_TTS_PITCH', '+2%'),
+  ttsRate: env('GUNES_TTS_RATE', '0%'),
+  ttsPitch: env('GUNES_TTS_PITCH', '0%'),
   /** Ücretsiz kota 500 bin; güvenlik payıyla bu sınırda tarayıcı sesine dönülür */
   ttsMonthlyLimit: Number(env('GUNES_TTS_MONTHLY_LIMIT', '450000')),
 
