@@ -5,7 +5,8 @@
  *    (Anahtar: elevenlabs.io → Profile → API Keys. Sohbete yapıştırmayın.)
  * 2) Güneş klasöründe çalıştırın:
  *    (Şirket ağında SSL denetimi varsa --use-system-ca gerekir.)
- *      node --use-system-ca scripts/promo/gunes-seslendir.mjs --list            (kullanabileceğiniz sesleri listeler)
+ *      node --use-system-ca scripts/promo/gunes-seslendir.mjs --list   (ÜCRETSİZ olanlar API ile kullanılabilir)
+ *      node --use-system-ca scripts/promo/gunes-seslendir.mjs --dene   (her ücretsiz kadın sesiyle kısa deneme; 'hepsi' ile erkekler de)            (kullanabileceğiniz sesleri listeler)
  *      node --use-system-ca scripts/promo/gunes-seslendir.mjs   (varsayılan sesle seslendirir)
  *      node --use-system-ca scripts/promo/gunes-seslendir.mjs <voice_id>        (seçtiğiniz sesle)
  * 3) Oluşan "seslendirme" klasöründeki tüm dosyaları sohbete yükleyin.
@@ -17,11 +18,37 @@ const KEY = process.env.ELEVENLABS_API_KEY || /^ELEVENLABS_API_KEY=(.+)$/m.exec(
 if (!KEY) { console.error('ELEVENLABS_API_KEY bulunamadı (.env dosyasına ekleyin).'); process.exit(1); }
 const H = { 'xi-api-key': KEY, 'content-type': 'application/json' };
 
-if (process.argv[2] === '--list') {
+async function voices() {
   const r = await fetch('https://api.elevenlabs.io/v1/voices', { headers: H });
   const j = await r.json();
   if (!r.ok) { console.error(j); process.exit(1); }
-  for (const v of j.voices) console.log(`${v.voice_id}  ${v.name.padEnd(28)} ${v.labels?.gender ?? ''} ${v.labels?.accent ?? ''} ${v.labels?.description ?? ''}`);
+  // "premade" = ElevenLabs'in hazır sesleri; ücretsiz planda API ile kullanılabilir
+  return j.voices.sort((x, y) => (x.category === 'premade' ? 0 : 1) - (y.category === 'premade' ? 0 : 1));
+}
+
+if (process.argv[2] === '--list') {
+  for (const v of await voices()) {
+    const free = v.category === 'premade' ? 'ÜCRETSİZ' : 'ücretli olabilir';
+    console.log(`${v.voice_id}  ${v.name.padEnd(26)} ${String(v.labels?.gender ?? '').padEnd(7)} ${String(v.labels?.age ?? '').padEnd(12)} ${free}`);
+  }
+  process.exit(0);
+}
+
+if (process.argv[2] === '--dene') {
+  // Her ücretsiz kadın sesiyle kısa bir deneme (yaklaşık 80 karakter/ses)
+  const list = (await voices()).filter((v) => v.category === 'premade' && (process.argv[3] === 'hepsi' || v.labels?.gender === 'female'));
+  mkdirSync('seslendirme/deneme', { recursive: true });
+  for (const v of list) {
+    const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${v.voice_id}?output_format=mp3_44100_128`, {
+      method: 'POST', headers: H,
+      body: JSON.stringify({ text: 'Bu, Güneş, kendi yapay zekâ asistanım. Her sabah beni karşılıyor.', model_id: 'eleven_multilingual_v2' }),
+    });
+    if (!r.ok) { console.log(`${v.name}: atlandı (${r.status})`); continue; }
+    const file = `seslendirme/deneme/${v.name.replace(/[^\w-]+/g, '_')}_${v.voice_id}.mp3`;
+    writeFileSync(file, Buffer.from(await r.arrayBuffer()));
+    console.log('✓', file);
+  }
+  console.log('\nDinleyip beğendiğinizin kimliğiyle çalıştırın:  node --use-system-ca scripts/promo/gunes-seslendir.mjs <voice_id>');
   process.exit(0);
 }
 
