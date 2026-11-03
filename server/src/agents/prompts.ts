@@ -158,6 +158,113 @@ ${opts.events}
 Bittiğinde tek satır özet ver.`;
 }
 
+interface MeetingInfo {
+  subject: string;
+  start: Date;
+  summary: string;
+  externalId: string;
+}
+
+export function meetingPrepPrompt(m: MeetingInfo, ctx: { memory: string; board: string; wiki: string }) {
+  return `Sen Güneş'sin. ${who()} birazdan bir toplantıya girecek; ona kısa ve işe yarar bir HAZIRLIK NOTU hazırla.
+
+# TOPLANTI
+"${m.subject}" · ${trDate(m.start)}
+Özet: ${m.summary}
+Takvim kimliği: ${m.externalId}
+
+${ctx.memory}
+
+# PANO
+${ctx.board}
+
+# WİKİ KATALOĞU
+${ctx.wiki}
+
+# ADIMLAR (hızlı ol, en fazla ~8 araç çağrısı)
+1. read_resource("calendar:///events/${m.externalId}") ile katılımcıları ve gündemi al. Başarısız olursa özetle yetin.
+2. Katılımcılar ve konu için: wiki_search / wiki_read (kişi ve proje sayfaları), search_events (son yazışmalar), list_board (ilgili kartlar). Gerekirse outlook_email_search ile konu başlığında son 1-2 maili bul.
+3. nudge_user ile notu gönder:
+   - title: "Toplantı hazırlığı · ${m.start.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', timeZone: config.timezone })} ${m.subject}" (en fazla 70 karakter)
+   - message (markdown, en fazla ~180 kelime):
+     **Amaç** (1 cümle) · **Katılımcılar** (kim, rolü/ilgili işi, son konuşulan) · **İlgili işler** ([kısa id] kart — durum) · **Sorulacaklar / açık konular** (2-4 madde) · gerekiyorsa **Dikkat** (geciken söz, bekleyen cevap)
+   - Son cümle: "Toplantıdan sonra aksiyonları çıkarmamı ister misiniz?"
+4. Kart AÇMA, TAŞIMA, mail gönderme. Sadece hazırlık notu.`;
+}
+
+export function meetingFollowupPrompt(m: MeetingInfo, ctx: { board: string; wiki: string }) {
+  return `Sen Güneş'sin. ${who()}'in az önce biten toplantısından KARARLARI ve AKSİYONLARI çıkar.
+
+# TOPLANTI
+"${m.subject}" · ${trDate(m.start)}
+Özet: ${m.summary}
+Takvim kimliği: ${m.externalId}
+
+# PANO
+${ctx.board}
+
+# WİKİ KATALOĞU
+${ctx.wiki}
+
+# ADIMLAR
+1. read_resource("calendar:///events/${m.externalId}") ile etkinliği oku. İçinde meetingTranscriptUrl varsa read_resource ile dökümü oku.
+2. Döküm yoksa: chat_message_search ile toplantı saatinde, konu başlığıyla ilgili Teams mesajlarını (toplantı sohbeti) ara.
+3. Ne döküm ne sohbet bulunursa HİÇBİR ŞEY yapma; "Döküm yok" yazıp bitir (kullanıcıya seslenme).
+4. Bulunursa:
+   - Kararları ve aksiyon maddelerini çıkar (kim · ne · ne zaman). Orijinal cümleleri koru.
+   - ${who()}'e düşen aksiyonlar için create_card (requested_by = isteyen kişi, due_date varsa). Var olan bir kartla aynıysa update_card(note=…); emin değilsen ask_link. Başkasına düşen ama ${who()}'in takip etmesi gereken işler için status "waiting", waiting_on = kişi.
+   - İlgili proje wiki sayfasına wiki_edit ile "Zaman çizelgesi"ne toplantı satırı ve kararları ekle (sayfa yoksa wiki_write ile aç).
+   - nudge_user: title "Toplantı özeti · ${m.subject}" (en fazla 70 karakter); message: **Kararlar**, **Size düşenler** ([id] kartlar), **Takip edilecekler**; son cümle: "Katılımcılara kısa bir takip maili taslağı hazırlayayım mı?"
+5. write_journal ile 1-2 cümle kayıt.
+Kurallar: Mail gönderme, kartı "done" yapma.`;
+}
+
+export function weeklyReportPrompt(data: string, ctx: { wiki: string }) {
+  return `Sen Güneş'sin. Bugün haftanın son iş günü; ${who()} için HAFTALIK RAPOR hazırla.
+
+# BU HAFTANIN VERİLERİ (panodan)
+${data}
+
+# WİKİ KATALOĞU
+${ctx.wiki}
+
+# GÖREV
+1. Gerekirse wiki_read ile en aktif 2-3 proje sayfasına bak.
+2. write_briefing(kind="weekly"):
+   - headline: tek cümle özet (ör. "Bu hafta 6 iş kapandı; EDI geçişi canlıya hazır.")
+   - content (markdown, yöneticiye iletilebilecek sadelikte):
+     ## ✅ Tamamlananlar
+     ## 🔄 Devam edenler (durum + sonraki adım)
+     ## ⚠️ Riskler ve gecikenler
+     ## 📅 Gelecek hafta
+     ## 💬 Notlar (isteğe bağlı, 1-2 madde)
+   - stats: new_cards, updated_cards alanlarını doldur.
+3. nudge_user: title "Haftalık rapor hazır"; message: 2-3 cümlelik özet + "Yöneticinize gönderilecek bir mail taslağı hazırlayayım mı?"
+4. write_journal ile 1 cümle.`;
+}
+
+export function reflectionPrompt(ctx: { memory: string; journal: string; wiki: string }) {
+  return `Sen Güneş'sin. Haftanın sonunda kendi HAFTALIK İÇ GÖZLEMİNİ yap: hafızanı düzenle, ders çıkar, wiki'yi temizle ve ${who()}'i ne kadar tanıdığını gözden geçir.
+
+${ctx.memory}
+
+# BU HAFTANIN GÜNLÜKLERİ
+${ctx.journal}
+
+# WİKİ KATALOĞU
+${ctx.wiki}
+
+# GÖREV
+1. Hafıza bakımı: Birbirini tekrar eden ya da eskimiş kayıtları update_memory ile birleştir/güncelle; artık önemsiz olanların önemini düşür. Kilitli (ruh çekirdeği) kayıtlara dokunma. Silme yapma.
+2. Dersler: Bu haftanın en önemli 2-4 dersini remember(kind="lesson") ile kaydet (kullanıcının tepkileri, reddettiği öneriler, "aynı iş mi" cevapları dahil).
+3. Wiki bakımı: Aktif 3-5 sayfayı wiki_read ile oku; çelişki, eskimiş bilgi ya da kopuk bağlantı varsa wiki_edit ile düzelt. "⚠️ Çelişki" notlarını çözebiliyorsan çöz.
+4. write_briefing(kind="reflection"):
+   - headline: "Bu hafta sizi şöyle tanıdım…" ile başlayan tek cümle
+   - content: ## 🧭 Çalışma tarzınız · ## 🎯 Öncelikleriniz · ## 💬 İletişim tercihleriniz · ## 🌱 Benim için dersler · ## ✍️ Önerdiğim üslup güncellemeleri (her biri 1-3 madde; kanıta dayan)
+5. nudge_user: title "Bu hafta sizi şöyle tanıdım"; message: en çarpıcı 2-3 gözlem + "Önerdiğim üslup güncellemelerini hafızama ekleyeyim mi?" (Kullanıcı sohbette onaylarsa remember(kind="soul") ile eklenecek; şimdi EKLEME.)
+6. write_journal ile "Haftalık iç gözlem: …" kaydı.`;
+}
+
 export function notifierPrompt(chatId: string, text: string) {
   return `Tek bir görevin var: teams_send_chat_message aracını kullanarak chatId "${chatId}" olan sohbete aşağıdaki metni AYNEN gönder. Başka hiçbir araç çağırma, metni değiştirme. Gönderince "gönderildi" yaz.
 

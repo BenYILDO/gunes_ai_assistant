@@ -406,10 +406,10 @@ export default function App() {
     }
   };
 
-  const run = async (k: 'morning' | 'tracker' | 'backfill' | 'wiki') => {
+  const run = async (k: 'morning' | 'tracker' | 'backfill' | 'wiki' | 'weekly' | 'reflection') => {
     try {
       await api.run(k);
-      toast(k === 'backfill' ? 'Geçmiş taraması başladı — biraz sürebilir' : k === 'wiki' ? 'Güneş wiki’yi kayıtlardan kuruyor' : 'Güneş taramaya başladı');
+      toast(k === 'backfill' ? 'Geçmiş taraması başladı — biraz sürebilir' : k === 'wiki' ? 'Güneş wiki’yi kayıtlardan kuruyor' : k === 'weekly' ? 'Güneş haftalık raporu hazırlıyor' : k === 'reflection' ? 'Güneş haftayı gözden geçiriyor' : 'Güneş taramaya başladı');
       setTimeout(() => void status.refresh(), 400);
     } catch (e) {
       toast((e as Error).message, 'error');
@@ -482,6 +482,7 @@ export default function App() {
                   userName={user ? `${user.name} ${user.title}` : ''}
                   briefing={briefing.data?.morning ?? null}
                   updates={briefing.data?.updates ?? []}
+                  weekly={briefing.data?.weekly ?? null}
                   today={today.data}
                   agenda={agenda.items}
                   weather={weather.data}
@@ -545,7 +546,7 @@ export default function App() {
             )}
             {view === 'memory' && (
               <motion.div key="memory" className="h-full" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.15 } }}>
-                <MemoryView memories={memory.data?.memories ?? []} journal={memory.data?.journal ?? []} onChange={() => void memory.refresh()} />
+                <MemoryView memories={memory.data?.memories ?? []} journal={memory.data?.journal ?? []} reflection={briefing.data?.reflection ?? null} onChange={() => void memory.refresh()} />
               </motion.div>
             )}
             {view === 'history' && (

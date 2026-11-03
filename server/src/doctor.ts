@@ -38,7 +38,15 @@ if (hasSupabase) {
       try {
         await getStore().listWikiPages();
         await getStore().getThreadLinks(['-']);
-        okMark('Supabase bağlantısı ve şema tamam');
+        // 0004: haftalık rapor/iç gözlem brifing türleri
+        const { createClient } = await import('@supabase/supabase-js');
+        const sb = createClient(config.supabaseUrl, config.supabaseKey, { auth: { persistSession: false } });
+        const probe = await sb.from('briefings').insert({ kind: 'weekly', headline: 'doctor', content: '', stats: {} }).select('id').maybeSingle();
+        if (probe.data?.id) await sb.from('briefings').delete().eq('id', probe.data.id);
+        if (probe.error) {
+          bad("Supabase: haftalık rapor türü yok → supabase/migrations/0004_weekly.sql dosyasını SQL Editor'de çalıştırın");
+          problems++;
+        } else okMark('Supabase bağlantısı ve şema tamam');
       } catch {
         bad("Supabase: wiki tabloları yok → supabase/migrations/0003_attribution_wiki.sql dosyasını SQL Editor'de çalıştırın");
         problems++;

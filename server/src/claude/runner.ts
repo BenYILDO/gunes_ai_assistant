@@ -45,7 +45,7 @@ function mcpConfig() {
   return mcpConfigPath;
 }
 
-export type ToolPreset = 'collector' | 'planner' | 'chat' | 'notifier' | 'none';
+export type ToolPreset = 'collector' | 'planner' | 'meeting' | 'chat' | 'notifier' | 'none';
 
 /** Güneş MCP sunucusunun tüm araçları */
 const GUNES_ALL = 'mcp__gunes';
@@ -63,6 +63,13 @@ export function toolPreset(preset: ToolPreset) {
         builtins: '',
         allowed: [...read, gunesTool('record_events'), gunesTool('search_events')],
         disallowed: [...forbidden, ...chatOnly, ...agentOnly, ...M365_DRAFT_TOOLS.map(m365), m365('teams_send_chat_message')],
+      };
+    case 'meeting':
+      // Toplantı hazırlığı/sonrası: Outlook/Teams/takvim + döküm okuma ve Güneş araçları; gönderme/taslak yok
+      return {
+        builtins: '',
+        allowed: [...read, GUNES_ALL],
+        disallowed: [...forbidden, ...chatOnly, ...M365_DRAFT_TOOLS.map(m365), m365('teams_send_chat_message')],
       };
     case 'planner':
       return {
@@ -273,6 +280,8 @@ export function runClaude(opts: RunOptions): Promise<RunResult> {
       resolve(result);
     });
 
+    // claude hemen kapanırsa (giriş yok, bulunamadı) EPIPE sunucuyu düşürmesin
+    child.stdin.on('error', () => {});
     child.stdin.end(opts.prompt, 'utf8');
   });
 }

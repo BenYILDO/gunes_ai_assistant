@@ -6,6 +6,7 @@
 import { config } from './config.js';
 import { runJob, runState } from './agents/pipeline.js';
 import { getStore } from './store/index.js';
+import { usageIsHigh } from './usage.js';
 
 function localParts(d = new Date()) {
   const parts = new Intl.DateTimeFormat('en-GB', {
@@ -39,11 +40,73 @@ export async function tick() {
     void runJob('morning');
     return;
   }
+  if (await meetingTick(now.time)) return;
+  if (await weeklyTick(now)) return;
   if (now.time > config.schedule.workEnd) return;
 
   const lastCollect = await store.getState('last_collect');
   const hoursSince = lastCollect ? (Date.now() - new Date(lastCollect).getTime()) / 3600_000 : Infinity;
   if (hoursSince >= config.schedule.trackerEveryHours - 0.05) void runJob('tracker');
+}
+
+/** ISO hafta anahtarı (ör. 2026-W45) */
+function isoWeek(d = new Date()) {
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const day = t.getUTCDay() || 7;
+  t.setUTCDate(t.getUTCDate() + 4 - day);
+  const y = t.getUTCFullYear();
+  const w = Math.ceil(((t.getTime() - Date.UTC(y, 0, 1)) / 864e5 + 1) / 7);
+  return `${y}-W${String(w).padStart(2, '0')}`;
+}
+
+const CANCELLED = /^(iptal|canceled|cancelled)\b/i;
+
+/** Toplantı hazırlığı (başlamadan 5–25 dk önce) ve toplantı sonrası (başlangıçtan 75–180 dk sonra) */
+async function meetingTick(time: string) {
+  if (!config.meetingPrep && !config.meetingFollowup) return false;
+  const store = getStore();
+  const meetings = (await store.listEvents({ sinceDays: 1, limit: 2000 })).filter(
+    (e) => e.source === 'calendar' && !CANCELLED.test(e.subject ?? ''),
+  );
+  const nowMs = Date.now();
+  for (const m of meetings) {
+    const mins = (new Date(m.occurred_at).getTime() - nowMs) / 60_000;
+    if (config.meetingPrep && time <= config.schedule.workEnd && mins >= 5 && mins <= 25) {
+      const key = `prep:${m.external_id}`;
+      if (await store.getState(key)) continue;
+      await store.setState(key, new Date().toISOString());
+      void runJob('prep', { eventId: m.id });
+      return true;
+    }
+    if (config.meetingFollowup && mins <= -75 && mins >= -180) {
+      const key = `followup:${m.external_id}`;
+      if (await store.getState(key)) continue;
+      if (await usageIsHigh()) continue;
+      await store.setState(key, new Date().toISOString());
+      void runJob('followup', { eventId: m.id });
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Haftalık rapor, ardından haftalık iç gözlem (kaçırılırsa haftanın sonraki iş gününde) */
+async function weeklyTick(now: { time: string; weekday: number }) {
+  const due = now.weekday > config.weeklyDay || (now.weekday === config.weeklyDay && now.time >= config.weeklyTime);
+  if (!due) return false;
+  const store = getStore();
+  const week = isoWeek();
+  if ((await store.getState('weekly_week')) !== week) {
+    await store.setState('weekly_week', week);
+    void runJob('weekly');
+    return true;
+  }
+  if ((await store.getState('reflection_week')) !== week && !(await usageIsHigh())) {
+    await store.setState('reflection_week', week);
+    void runJob('reflection');
+    return true;
+  }
+  return false;
 }
 
 export function startScheduler() {
@@ -66,5 +129,13 @@ export async function nextRuns() {
   const next = lastCollect
     ? new Date(new Date(lastCollect).getTime() + config.schedule.trackerEveryHours * 3600_000).toISOString()
     : null;
-  return { lastMorning, lastCollect, backfillDone, nextTracker: next, schedule: config.schedule, enabled: Boolean(timer) };
+  return {
+    lastMorning,
+    lastCollect,
+    backfillDone,
+    nextTracker: next,
+    schedule: config.schedule,
+    weekly: { day: config.weeklyDay, time: config.weeklyTime, lastWeek: await store.getState('weekly_week') },
+    enabled: Boolean(timer),
+  };
 }

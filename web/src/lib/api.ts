@@ -98,7 +98,7 @@ export interface DayEndResult { steps: { key: string; ok: boolean; note?: string
 
 export interface Nudge { id: string; title: string; message: string; created_at: string }
 
-export interface Briefing { id: string; kind: 'morning' | 'tracker'; headline: string; content: string; stats: Record<string, number>; created_at: string }
+export interface Briefing { id: string; kind: 'morning' | 'tracker' | 'weekly' | 'reflection'; headline: string; content: string; stats: Record<string, number>; created_at: string }
 export interface Memory {
   id: string;
   kind: 'soul_core' | 'soul' | 'user' | 'memory' | 'lesson' | 'person' | 'project';
@@ -174,7 +174,7 @@ export const api = {
   updateCard: (id: string, patch: Partial<Card> & { project?: string }) => req<Card>(`/cards/${id}`, json('PATCH', patch)),
   deleteCard: (id: string, noise = false) => req(`/cards/${id}${noise ? '?feedback=noise' : ''}`, json('DELETE')),
   activity: (id: string) => req<Activity[]>(`/cards/${id}/activity`),
-  briefing: () => req<{ morning: Briefing | null; updates: Briefing[] }>('/briefing'),
+  briefing: () => req<{ morning: Briefing | null; weekly: Briefing | null; reflection: Briefing | null; updates: Briefing[] }>('/briefing'),
   suggestions: () => req<Suggestion[]>('/suggestions'),
   actions: () => req<PendingAction[]>('/actions'),
   today: () => req<Today>('/today'),
@@ -188,7 +188,7 @@ export const api = {
   resolveAction: (id: string, decision: 'approve' | 'reject') => req(`/actions/${id}/${decision}`, json('POST')),
   updateSuggestion: (id: string, status: string, lesson?: string) =>
     req(`/suggestions/${id}`, json('PATCH', { status, lesson })),
-  run: (kind: 'morning' | 'tracker' | 'backfill' | 'wiki') => req(`/run/${kind}`, json('POST')),
+  run: (kind: 'morning' | 'tracker' | 'backfill' | 'wiki' | 'weekly' | 'reflection') => req(`/run/${kind}`, json('POST')),
   nudges: () => req<Nudge[]>('/nudges'),
   daySummary: () => req<DaySummary>('/day/summary'),
   endDay: () => req<DayEndResult>('/day/end', json('POST')),

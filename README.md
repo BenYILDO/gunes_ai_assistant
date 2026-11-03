@@ -21,7 +21,9 @@ Her sabah sizi karşılar, gün içinde 2 saatte bir gelişmeleri kontrol eder, 
 Windows açılışı
  └─ Güneş sunucusu (arka planda, sadece bu bilgisayardan erişilir: 127.0.0.1:4317)
      ├─ Zamanlayıcı ─ 08:30 sabah çalışması (bilgisayar kapalıysa açılınca telafi eder)
-     │              └ mesai içinde 2 saatte bir takip (yeni bir şey yoksa planlayıcıyı çalıştırmaz)
+     │              ├ mesai içinde 2 saatte bir takip (yeni bir şey yoksa planlayıcıyı çalıştırmaz)
+     │              ├ toplantıdan ~15 dk önce hazırlık notu, toplantıdan sonra aksiyonlar
+     │              └ Cuma 16:30 haftalık rapor + haftalık iç gözlem
      │
      │   ① Toplayıcı (Haiku)   Outlook + Teams + Takvim'i okur → olayları kaydeder
      │   ② Planlayıcı (Sonnet) kart açar/günceller, öneri bırakır, brifing + günlük yazar
@@ -95,6 +97,9 @@ Güneş kotayı kendisi sayar; ayda 450 bin karakterde tarayıcı sesine döner 
 | Bilgisayar açılınca | Sunucu arka planda başlar, Güneş penceresi açılır, karşılama ekranı her açılışta oynar (sesli karşılama günün ilk açılışında) |
 | 08:30 (ya da açılışta, kaçırıldıysa) | Sabah çalışması: son 24 saat taranır, brifing yazılır, Teams'e özet gider |
 | Mesai içinde 2 saatte bir | Takip: yeni gelişme varsa kartlar güncellenir, öneriler eklenir |
+| Toplantıdan ~15 dk önce | **Toplantı hazırlığı:** katılımcılar, ilgili kartlar, açık konular, son yazışmalar ve "sormanız gerekenler" bir pop-up notla gelir |
+| Toplantıdan ~1,5 saat sonra | **Toplantı sonrası:** Teams dökümü ya da toplantı sohbeti varsa kararlar ve size düşen aksiyonlar çıkarılır, kartlar açılır/güncellenir, takip maili taslağı önerilir. Döküm yoksa sessiz kalır |
+| Cuma 16:30 | **Haftalık rapor** (Brifing ekranında): kapananlar, ilerleyenler, riskler, gelecek hafta. Ardından **haftalık iç gözlem** (Hafıza ekranında): Güneş hafızasını ayıklar, dersleri ve wiki tutarlılığını gözden geçirir, "Bu hafta sizi şöyle tanıdım" der |
 | Her an | **Güneş'e yaz** ile sohbet. Kart açtırabilir, mail aratabilir, taslak hazırlatabilir, araştırma yaptırabilirsiniz |
 
 **Bilgi birikimi — Wiki:** Güneş her taramada dokunduğu projeler ve kişiler için wiki sayfaları açar ya da günceller (Karpathy'nin *LLM Wiki* deseni). Sayfalar `[[bağlantı]]` ile birbirine bağlıdır ve her iddianın kaynağı yazılıdır. Bir mail dizisi ya da Teams sohbeti bir projeye bağlandığında, o diziden gelen her yeni mesaj otomatik olarak o projeye işlenir. Sohbette *"bu Teams grubunu Akaryakıt projesine bağla"* diyebilirsiniz. Wiki, `data\wiki\` klasörüne de markdown olarak yazılır; bu klasörü **Obsidian** ile açıp grafik görünümünde inceleyebilirsiniz.
@@ -108,6 +113,8 @@ Güneş kotayı kendisi sayar; ayda 450 bin karakterde tarayıcı sesine döner 
 **Wiki'yi geçmişten kurmak:** Daha önce taranmış kayıtlardan wiki oluşturmak için Outlook'u yeniden taramanız gerekmez. **Wiki** sekmesindeki ya da **Geçmiş** sekmesindeki **"Wiki'yi kayıtlardan kur"** butonunu kullanın.
 
 **Emin değilse sorar:** Yeni bir mesaj var olan bir kartla aynı iş gibi görünüyor ama Güneş emin değilse birleştirmez; panoda **"Aynı iş mi?"** diye sorar. Sizin gönderdiğiniz mail ve mesajlar ("eklendi", "gönderdim" gibi) ilerleme bildirimi sayılır ve ilgili kart güncellenir.
+
+**Toplantılar ve hafta sonu özeti:** Takip çalışmaları artık takvimi de okur. Bir toplantı yaklaştığında Güneş kısa bir hazırlık notu bırakır; toplantıdan sonra Teams dökümü varsa kararları ve aksiyonları panoya işler. Cuma günü (`GUNES_WEEKLY_DAY`, `GUNES_WEEKLY_TIME`) haftalık rapor ve iç gözlem yapılır; bilgisayar o saatte kapalıysa haftanın bir sonraki açılışında telafi edilir. İstemezseniz `.env` dosyasında `GUNES_MEETING_PREP=off` / `GUNES_MEETING_FOLLOWUP=off` yazın. Haftalık rapor için Supabase'de `0004_weekly.sql` dosyasının çalıştırılmış olması gerekir.
 
 **Hava ve konum:** Arayüz ilk açılışta konum izni ister. İzin verirseniz gökyüzü teması bulunduğunuz yerin gerçek gün doğumu ve batımına, ayrıca havaya (yağmur, kar, bulut, sis, fırtına) göre değişir. İzin vermezseniz `.env` dosyasındaki `GUNES_LAT`/`GUNES_LON` değerleri, onlar da boşsa İstanbul kullanılır. Hava verisi Open-Meteo'dan anahtarsız alınır.
 
@@ -164,6 +171,6 @@ Arayüz adresine eklenebilen parametreler: `?intro=1` karşılamayı zorla oynat
 ## Yol haritası
 
 - **Faz 1 (bu sürüm):** Toplayıcı, planlayıcı, takipçi, sohbet, temel hafıza, kanban, karşılama
-- **Faz 2:** Önem puanlı hafıza sıkıştırma, haftalık iç gözlem ve "seni tanıdım" kartı
+- **Faz 2:** ✅ Toplantı hazırlığı/sonrası, haftalık rapor, haftalık iç gözlem; sırada önem puanlı hafıza sıkıştırma
 - **Faz 3:** Araştırmacı Güneş (rakip ve sektör radarı: GitHub, Reddit, HN, sektör siteleri)
 - **Faz 4:** Claude Code oturumlarından otomatik proje ilerleme takibi

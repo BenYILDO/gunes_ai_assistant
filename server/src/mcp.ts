@@ -378,9 +378,9 @@ server.registerTool(
   'write_briefing',
   {
     description:
-      'Brifingi yazar. morning: sabah karşılama brifingi; tracker: 2 saatlik gelişme özeti. headline kısa ve sıcak bir cümle olsun. content markdown.',
+      'Brifingi yazar. morning: sabah karşılama brifingi; tracker: 2 saatlik gelişme özeti; weekly: Cuma haftalık raporu; reflection: haftalık iç gözlem ("sizi şöyle tanıdım"). headline kısa ve sıcak bir cümle olsun. content markdown.',
     inputSchema: {
-      kind: z.enum(['morning', 'tracker']),
+      kind: z.enum(['morning', 'tracker', 'weekly', 'reflection']),
       headline: z.string().max(200),
       content: z.string(),
       stats: z

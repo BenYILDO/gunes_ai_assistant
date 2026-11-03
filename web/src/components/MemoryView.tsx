@@ -1,10 +1,11 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { BookOpen, Brain, Feather, FolderKanban, GraduationCap, Heart, Lock, Pencil, Plus, Trash2, UserRound, Users } from 'lucide-react';
+import { BookOpen, Brain, Eye, Feather, FolderKanban, GraduationCap, Heart, Lock, Pencil, Plus, Trash2, UserRound, Users } from 'lucide-react';
 import { useState } from 'react';
-import { api, type JournalEntry, type Memory } from '../lib/api';
+import { api, type Briefing, type JournalEntry, type Memory } from '../lib/api';
 import { fmtDay, relTime } from '../lib/time';
 import { useToast } from './Toasts';
 import { Button, Empty, Panel, PanelTitle } from './ui';
+import { WeeklyCard } from './WeeklyCard';
 
 const GROUPS: { kinds: Memory['kind'][]; title: string; icon: typeof Brain; hint: string }[] = [
   { kinds: ['soul_core'], title: 'Ruhum', icon: Heart, hint: 'Değişmeyen çekirdek kişiliğim' },
@@ -16,7 +17,7 @@ const GROUPS: { kinds: Memory['kind'][]; title: string; icon: typeof Brain; hint
   { kinds: ['project'], title: 'Projeler', icon: FolderKanban, hint: 'Proje bağlamları' },
 ];
 
-export function MemoryView({ memories, journal, onChange }: { memories: Memory[]; journal: JournalEntry[]; onChange: () => void }) {
+export function MemoryView({ memories, journal, reflection, onChange }: { memories: Memory[]; journal: JournalEntry[]; reflection?: Briefing | null; onChange: () => void }) {
   const toast = useToast();
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({ kind: 'memory' as Memory['kind'], key: '', content: '', importance: 3 });
@@ -33,6 +34,11 @@ export function MemoryView({ memories, journal, onChange }: { memories: Memory[]
   return (
     <div className="grid h-full grid-cols-1 gap-4 overflow-hidden xl:grid-cols-[1fr_380px]">
       <div className="scroll-thin space-y-4 overflow-y-auto pb-6 pr-1">
+        {reflection && (
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+            <WeeklyCard title="Haftalık iç gözlem" icon={<Eye size={14} />} item={reflection} defaultOpen={Date.now() - new Date(reflection.created_at).getTime() < 3 * 864e5} />
+          </motion.div>
+        )}
         <Panel className="p-5" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[color:var(--accent)]/15 text-accent">

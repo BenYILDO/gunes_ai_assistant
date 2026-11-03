@@ -104,7 +104,7 @@ export interface PendingAction {
 
 export interface Briefing {
   id: string;
-  kind: 'morning' | 'tracker';
+  kind: 'morning' | 'tracker' | 'weekly' | 'reflection';
   headline: string;
   content: string;
   stats: Record<string, unknown>;

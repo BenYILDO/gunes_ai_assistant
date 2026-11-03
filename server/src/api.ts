@@ -322,8 +322,13 @@ export function apiRouter() {
   r.get(
     '/briefing',
     wrap(async (_req, res) => {
-      const [morning, recent] = await Promise.all([store.latestBriefing('morning'), store.listBriefings(10)]);
-      res.json({ morning, updates: recent.filter((b) => b.kind === 'tracker').slice(0, 5) });
+      const [morning, weekly, reflection, recent] = await Promise.all([
+        store.latestBriefing('morning'),
+        store.latestBriefing('weekly'),
+        store.latestBriefing('reflection'),
+        store.listBriefings(10),
+      ]);
+      res.json({ morning, weekly, reflection, updates: recent.filter((b) => b.kind === 'tracker').slice(0, 5) });
     }),
   );
 
@@ -387,7 +392,7 @@ export function apiRouter() {
     '/run/:kind',
     wrap(async (req, res) => {
       const k = String(req.params.kind) as JobKind;
-      if (!['morning', 'tracker', 'backfill', 'wiki'].includes(k)) return void res.status(400).json({ error: `Bilinmeyen: ${k}` });
+      if (!['morning', 'tracker', 'backfill', 'wiki', 'weekly', 'reflection'].includes(k)) return void res.status(400).json({ error: `Bilinmeyen: ${k}` });
       void runJob(k);
       res.json({ ok: true, queued: k });
     }),

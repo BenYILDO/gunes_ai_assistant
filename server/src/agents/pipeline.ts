@@ -4,11 +4,15 @@ import { getWeather } from '../weather.js';
 import { announceNew, unseenIds } from '../nudges.js';
 import { runClaude, type RunnerEvent } from '../claude/runner.js';
 import { getStore } from '../store/index.js';
-import { collectorPrompt, notifierPrompt, plannerPrompt, wikiBuildPrompt } from './prompts.js';
+import { collectorPrompt, meetingFollowupPrompt, meetingPrepPrompt, notifierPrompt, plannerPrompt, reflectionPrompt, weeklyReportPrompt, wikiBuildPrompt } from './prompts.js';
 import { buildBoardContext, buildMemoryContext, buildWikiIndex, ensureSoul, formatEvents } from './soul.js';
 import { exportWiki } from '../wiki.js';
 
-export type JobKind = 'morning' | 'tracker' | 'backfill' | 'wiki';
+export type JobKind = 'morning' | 'tracker' | 'backfill' | 'wiki' | 'prep' | 'followup' | 'weekly' | 'reflection';
+export interface JobOptions {
+  /** prep/followup: takvim olayının veritabanı id'si */
+  eventId?: string;
+}
 
 /** Arayüzün canlı gösterdiği çalışma durumu. */
 export const runState = {
@@ -47,6 +51,7 @@ const toolLabel = (name: string) => {
     link_thread: 'Yazışmayı projeye bağlıyor',
     wiki_read: 'Wiki sayfasını okuyor',
     wiki_write: 'Wiki sayfası yazıyor',
+    read_resource: 'Takvimi/dökümü okuyor',
     wiki_edit: 'Wiki\'yi düzenliyor',
     nudge_user: 'Size sesleniyor',
   };
@@ -89,7 +94,7 @@ async function collect(from: Date, to: Date, includeCalendar: boolean, label = '
   return res;
 }
 
-async function plan(kind: Exclude<JobKind, 'wiki'>) {
+async function plan(kind: 'morning' | 'tracker' | 'backfill') {
   // Büyük birikimlerde planlayıcı birkaç tur çalışır (her turda en fazla 120 olay).
   for (let round = 0; round < 6; round++) {
     const events = await store.listEvents({ unprocessed: true, limit: 120 });
@@ -122,6 +127,96 @@ async function plan(kind: Exclude<JobKind, 'wiki'>) {
   const left = await store.listEvents({ unprocessed: true, limit: 500 });
   const stale = left.filter((e) => Date.now() - new Date(e.created_at).getTime() > 3 * 864e5);
   if (stale.length) await store.updateEvents(stale.map((e) => e.id), { processed: true });
+}
+
+/** Toplantı hazırlığı (prep) ya da toplantı sonrası aksiyonlar (followup) */
+async function meetingJob(kind: 'prep' | 'followup', eventId?: string) {
+  const ev = eventId ? (await store.listEvents({ sinceDays: 3, limit: 2000 })).find((e) => e.id === eventId) : undefined;
+  if (!ev) throw new Error('Toplantı kaydı bulunamadı');
+  const m = { subject: ev.subject ?? ev.summary.slice(0, 80), start: new Date(ev.occurred_at), summary: ev.summary, externalId: ev.external_id };
+  runState.step = kind === 'prep' ? `Toplantıya hazırlanıyor: ${m.subject}` : `Toplantı aksiyonlarını çıkarıyor: ${m.subject}`;
+  log(runState.step);
+  const t0 = Date.now();
+  const res = await runClaude({
+    prompt:
+      kind === 'prep'
+        ? meetingPrepPrompt(m, { memory: await buildMemoryContext(store, { compact: true }), board: await buildBoardContext(store), wiki: await buildWikiIndex(store) })
+        : meetingFollowupPrompt(m, { board: await buildBoardContext(store), wiki: await buildWikiIndex(store) }),
+    model: config.modelThink,
+    preset: 'meeting',
+    effort: kind === 'prep' ? 'low' : 'medium',
+    onEvent,
+    timeoutMs: 15 * 60_000,
+  });
+  log(`${kind === 'prep' ? 'Hazırlık' : 'Toplantı sonrası'} (${secs(t0)}): ${res.text.split('\n')[0]?.slice(0, 200)}`);
+  if (res.isError) throw new Error(res.text.slice(0, 400));
+}
+
+/** Haftanın verileri (Pazartesi'den bu yana) — modelsiz hesaplanır, rapora girdi olur */
+async function weekData() {
+  const now = new Date();
+  const monday = new Date(now);
+  monday.setHours(0, 0, 0, 0);
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+  const since = monday.toISOString();
+  const [cards, events, projects] = await Promise.all([
+    store.listCards({ includeDone: true }),
+    store.listEvents({ sinceDays: 8, limit: 5000 }),
+    store.listProjects(),
+  ]);
+  const pname = new Map(projects.map((p) => [p.id, p.name]));
+  const fmt = (c: (typeof cards)[number]) =>
+    `- [${c.id.slice(0, 8)}] ${c.title}${c.project_id ? ` (${pname.get(c.project_id)})` : ''}${c.requested_by ? ` · ${c.requested_by}` : ''}${c.due_date ? ` · son tarih ${c.due_date}` : ''}`;
+  const open = cards.filter((c) => c.status !== 'done');
+  const today = now.toISOString().slice(0, 10);
+  const sec = (title: string, list: typeof cards) => `### ${title} (${list.length})\n${list.slice(0, 15).map(fmt).join('\n') || '- yok'}`;
+  return [
+    sec('Bu hafta kapananlar', cards.filter((c) => c.status === 'done' && (c.closed_at ?? '') >= since)),
+    sec('Bu hafta açılanlar', cards.filter((c) => c.created_at >= since)),
+    sec('Bu hafta ilerleyenler (açık)', open.filter((c) => c.updated_at >= since && c.created_at < since)),
+    sec('Kapatılabilir (onay bekliyor)', open.filter((c) => c.status === 'review')),
+    sec('Gecikenler / kritik', open.filter((c) => c.priority === 'critical' || (c.due_date && c.due_date < today))),
+    sec('Başkasından beklenenler', open.filter((c) => c.status === 'waiting')),
+    sec('Gelecek hafta son tarihli', open.filter((c) => c.due_date && c.due_date >= today && c.due_date <= new Date(now.getTime() + 9 * 864e5).toISOString().slice(0, 10))),
+    `### Diğer\n- Bu hafta toplantı: ${events.filter((e) => e.source === 'calendar' && e.occurred_at >= since).length}\n- Bu hafta işlenen mail/mesaj: ${events.filter((e) => e.source !== 'calendar' && e.occurred_at >= since).length}`,
+  ].join('\n\n');
+}
+
+async function weeklyReport() {
+  runState.step = 'Haftalık rapor hazırlanıyor';
+  log(runState.step);
+  const t0 = Date.now();
+  const res = await runClaude({
+    prompt: weeklyReportPrompt(await weekData(), { wiki: await buildWikiIndex(store) }),
+    model: config.modelThink,
+    preset: 'planner',
+    effort: 'medium',
+    onEvent,
+    timeoutMs: 15 * 60_000,
+  });
+  log(`Haftalık rapor (${secs(t0)}): ${res.text.split('\n')[0]?.slice(0, 200)}`);
+  if (res.isError) throw new Error(res.text.slice(0, 400));
+}
+
+async function weeklyReflection() {
+  runState.step = 'Haftalık iç gözlem';
+  log(runState.step);
+  const journal = (await store.listJournal(40))
+    .filter((j) => Date.now() - new Date(j.created_at).getTime() < 8 * 864e5)
+    .reverse()
+    .map((j) => `- ${j.created_at.slice(0, 16).replace('T', ' ')}: ${j.content}`)
+    .join('\n');
+  const t0 = Date.now();
+  const res = await runClaude({
+    prompt: reflectionPrompt({ memory: await buildMemoryContext(store), journal: journal || '(bu hafta günlük yok)', wiki: await buildWikiIndex(store) }),
+    model: config.modelThink,
+    preset: 'planner',
+    effort: 'medium',
+    onEvent,
+    timeoutMs: 20 * 60_000,
+  });
+  log(`İç gözlem (${secs(t0)}): ${res.text.split('\n')[0]?.slice(0, 200)}`);
+  if (res.isError) throw new Error(res.text.slice(0, 400));
 }
 
 /** Wiki'yi kayıtlı olaylardan kurar (Outlook/Teams'e gitmez). */
@@ -205,13 +300,13 @@ async function lastCollect(fallbackHours: number) {
 
 /** Tek seferde tek iş çalışır; yeni istek gelirse sıraya girer. */
 let chain: Promise<unknown> = Promise.resolve();
-export function runJob(kind: JobKind) {
-  const job = chain.then(() => execute(kind));
+export function runJob(kind: JobKind, opts: JobOptions = {}) {
+  const job = chain.then(() => execute(kind, opts));
   chain = job.catch(() => undefined);
   return job;
 }
 
-async function execute(kind: JobKind) {
+async function execute(kind: JobKind, opts: JobOptions = {}) {
   await ensureSoul(store);
   const run = await store.startRun(kind);
   runState.running = kind;
@@ -221,7 +316,13 @@ async function execute(kind: JobKind) {
   const startedAt = new Date();
   const nudgesBefore = await unseenIds(store).catch(() => [] as string[]);
   try {
-    if (kind === 'wiki') {
+    if (kind === 'prep' || kind === 'followup') {
+      await meetingJob(kind, opts.eventId);
+    } else if (kind === 'weekly') {
+      await weeklyReport();
+    } else if (kind === 'reflection') {
+      await weeklyReflection();
+    } else if (kind === 'wiki') {
       await buildWiki();
     } else if (kind === 'backfill') {
       // 45 günü parçalara böl; Supabase modunda parçalar aynı anda (varsayılan 3) taranır.
@@ -260,7 +361,7 @@ async function execute(kind: JobKind) {
         return;
       }
       const from = await lastCollect(kind === 'morning' ? 24 : 3);
-      await collect(from, startedAt, kind === 'morning');
+      await collect(from, startedAt, true);
       await store.setState('last_collect', startedAt.toISOString());
       const pending = (await store.listEvents({ unprocessed: true, limit: 1000 })).length;
       if (kind === 'tracker' && pending === 0) {

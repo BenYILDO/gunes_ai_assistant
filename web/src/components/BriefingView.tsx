@@ -1,5 +1,5 @@
 import { animate, motion, useMotionValue, useTransform } from 'motion/react';
-import { ArrowRight, CalendarClock, Clock, Flame, Hourglass, Mail, Sunrise, Sunset, Umbrella, Users, Volume2, Zap } from 'lucide-react';
+import { ArrowRight, CalendarCheck, CalendarClock, Clock, Flame, Hourglass, Mail, Sunrise, Sunset, Umbrella, Users, Volume2, Zap } from 'lucide-react';
 import { useEffect, useMemo } from 'react';
 import type { AgendaItem } from '../lib/agenda';
 import type { Briefing, PendingAction, Status, Suggestion, Today, Weather } from '../lib/api';
@@ -10,6 +10,7 @@ import { SuggestionsPanel } from './Suggestions';
 import { SunCore } from './SunCore';
 import { Button, Empty, Panel, PanelTitle } from './ui';
 import { WEATHER_ICON } from './WeatherChip';
+import { WeeklyCard } from './WeeklyCard';
 
 const EASE = [0.16, 1, 0.3, 1] as const;
 const rise = (i: number) => ({
@@ -52,6 +53,7 @@ interface Props {
   userName: string;
   briefing: Briefing | null;
   updates: Briefing[];
+  weekly: Briefing | null;
   today: Today | null;
   agenda: AgendaItem[];
   weather: Weather | null;
@@ -278,6 +280,11 @@ export function BriefingView(p: Props) {
         <div className="space-y-4">
           <Approvals items={p.actions} onResolve={p.onResolve} />
           <SuggestionsPanel items={p.suggestions} onAct={p.onAct} onOpenCard={p.onOpenCard} />
+          {p.weekly && Date.now() - new Date(p.weekly.created_at).getTime() < 7 * 864e5 && (
+            <motion.div {...rise(7)}>
+              <WeeklyCard title="Haftalık rapor" icon={<CalendarCheck size={14} />} item={p.weekly} />
+            </motion.div>
+          )}
           {p.updates.length > 0 && (
             <motion.div {...rise(8)}>
               <Panel className="p-5">

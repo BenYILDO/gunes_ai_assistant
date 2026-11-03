@@ -5,7 +5,7 @@ import { fmtDay, fmtTime, relTime } from '../lib/time';
 import { Markdown } from './Markdown';
 import { Button, Empty, Panel, PanelTitle } from './ui';
 
-const KIND_TR: Record<string, string> = { morning: 'Sabah çalışması', tracker: '2 saatlik takip', backfill: 'Geçmiş taraması', wiki: 'Wiki kurulumu' };
+const KIND_TR: Record<string, string> = { morning: 'Sabah çalışması', tracker: '2 saatlik takip', backfill: 'Geçmiş taraması', wiki: 'Wiki kurulumu', prep: 'Toplantı hazırlığı', followup: 'Toplantı sonrası', weekly: 'Haftalık rapor', reflection: 'Haftalık iç gözlem' };
 
 export function HistoryView({
   runs,
@@ -16,7 +16,7 @@ export function HistoryView({
   runs: AgentRun[];
   updates: Briefing[];
   status: Status | null;
-  onRun: (k: 'morning' | 'tracker' | 'backfill' | 'wiki') => void;
+  onRun: (k: 'morning' | 'tracker' | 'backfill' | 'wiki' | 'weekly' | 'reflection') => void;
 }) {
   const running = status?.run.running;
   return (
@@ -24,13 +24,15 @@ export function HistoryView({
       <div className="scroll-thin space-y-4 overflow-y-auto pb-6 pr-1">
         <Panel className="p-5" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
           <PanelTitle icon={<Play size={14} />}>Elle çalıştır</PanelTitle>
-          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
             {(
               [
                 ['morning', 'Sabah brifingi', 'Son 24 saati tarar, brifing yazar'],
                 ['tracker', 'Gelişmeleri kontrol et', 'Son taramadan beri gelenlere bakar'],
                 ['backfill', 'Geçmişi tara', 'Son 45 günü 7 günlük parçalarla tarar (uzun sürer)'],
                 ['wiki', "Wiki'yi kayıtlardan kur", 'Taranmış kayıtlardan proje/kişi sayfaları oluşturur (Outlook’a gitmez)'],
+                ['weekly', 'Haftalık rapor', 'Bu haftanın kapanan/ilerleyen/bekleyen işlerinden yönetici özeti'],
+                ['reflection', 'Haftalık iç gözlem', 'Hafızayı ayıklar, dersleri ve wiki tutarlılığını gözden geçirir'],
               ] as const
             ).map(([k, t, d]) => (
               <motion.button

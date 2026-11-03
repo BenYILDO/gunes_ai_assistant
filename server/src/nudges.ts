@@ -69,6 +69,7 @@ $app = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powersh
   try {
     const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { windowsHide: true, stdio: ['pipe', 'ignore', 'ignore'] });
     child.on('error', () => undefined);
+    child.stdin.on('error', () => {});
     child.stdin.end(xml, 'utf8');
   } catch {
     /* bildirim gösterilemezse sessizce geç */
