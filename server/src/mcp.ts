@@ -289,7 +289,7 @@ server.registerTool(
       if (a.add_people) patch.people = [...new Set([...c.people, ...a.add_people])];
       if (a.add_tags) patch.tags = [...new Set([...c.tags, ...a.add_tags])];
       if (a.add_sources) patch.sources = [...c.sources, ...(a.add_sources as SourceRef[])];
-      await store.updateCard(c.id, patch);
+      if (Object.keys(patch).length) await store.updateCard(c.id, patch);
       await store.addActivity({
         card_id: c.id,
         actor: ACTOR,

@@ -232,6 +232,8 @@ export interface Store {
   startRun(kind: string): Promise<AgentRun>;
   finishRun(id: string, patch: Partial<AgentRun>): Promise<void>;
   listRuns(limit: number): Promise<AgentRun[]>;
+  /** Sunucu kapanınca yarıda kalan 'running' kayıtlarını kapatır */
+  closeStaleRuns(message: string): Promise<number>;
 
   getState(key: string): Promise<string | null>;
   setState(key: string, value: string): Promise<void>;

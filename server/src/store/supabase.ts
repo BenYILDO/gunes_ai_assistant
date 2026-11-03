@@ -77,7 +77,15 @@ export class SupabaseStore implements Store {
   }
   async updateCard(id: string, patch: Partial<Card>) {
     const { id: _i, created_at: _c, updated_at: _u, ...rest } = patch;
-    return must(await this.db.from('cards').update(rest).eq('id', id).select().single(), 'card update') as Card;
+    // Boş güncelleme (ör. sadece not eklenirken) PostgREST'te 0 satır döner ve .single() "Cannot coerce" hatası verir
+    if (!Object.keys(rest).length) {
+      const c = await this.getCard(id);
+      if (!c) throw new Error(`Kart bulunamadı: ${id}`);
+      return c;
+    }
+    const row = must(await this.db.from('cards').update(rest).eq('id', id).select().maybeSingle(), 'card update') as Card | null;
+    if (!row) throw new Error(`Kart bulunamadı: ${id}`);
+    return row;
   }
   async deleteCard(id: string) {
     must(await this.db.from('cards').delete().eq('id', id), 'card delete');
@@ -191,6 +199,18 @@ export class SupabaseStore implements Store {
     ) as AgentRun[];
   }
 
+  async closeStaleRuns(message: string) {
+    const rows = must(
+      await this.db
+        .from('agent_runs')
+        .update({ status: 'error', error: message, finished_at: new Date().toISOString() })
+        .eq('status', 'running')
+        .select('id'),
+      'stale runs',
+    ) as { id: string }[];
+    return rows.length;
+  }
+
   async getState(key: string) {
     const row = must(await this.db.from('sync_state').select('value').eq('key', key).maybeSingle(), 'state') as {
       value: string;
@@ -213,7 +233,14 @@ export class SupabaseStore implements Store {
   }
   async updateMemory(id: string, patch: Partial<Memory>) {
     const { id: _i, created_at: _c, updated_at: _u, ...rest } = patch;
-    return must(await this.db.from('memories').update(rest).eq('id', id).select().single(), 'memory update') as Memory;
+    if (!Object.keys(rest).length) {
+      const m = (await this.listMemories()).find((x) => x.id === id);
+      if (!m) throw new Error(`Hafıza kaydı bulunamadı: ${id}`);
+      return m;
+    }
+    const row = must(await this.db.from('memories').update(rest).eq('id', id).select().maybeSingle(), 'memory update') as Memory | null;
+    if (!row) throw new Error(`Hafıza kaydı bulunamadı: ${id}`);
+    return row;
   }
   async deleteMemory(id: string) {
     must(await this.db.from('memories').delete().eq('id', id), 'memory delete');

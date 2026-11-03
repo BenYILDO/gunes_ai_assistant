@@ -281,6 +281,14 @@ export class LocalStore implements Store {
     return this.read().agent_runs.sort(byDesc('started_at')).slice(0, limit);
   }
 
+  async closeStaleRuns(message: string) {
+    return this.tx((db) => {
+      const stale = db.agent_runs.filter((r) => r.status === 'running');
+      stale.forEach((r) => Object.assign(r, { status: 'error', error: message, finished_at: now() }));
+      return stale.length;
+    });
+  }
+
   async getState(key: string) {
     return this.read().sync_state[key] ?? null;
   }

@@ -30,6 +30,9 @@ if (existsSync(webDist)) {
 const store = getStore();
 try {
   await ensureSoul(store);
+  // Önceki oturumda sunucu kapanırken süren çalışmalar "çalışıyor" olarak takılı kalmasın
+  const stale = await store.closeStaleRuns('Sunucu kapandığı için yarıda kaldı');
+  if (stale) console.log(`[güneş] ${stale} yarıda kalmış çalışma kapatıldı.`);
 } catch (e) {
   // Veritabanına ulaşılamasa bile arayüz açılsın; hata loglansın ve doctor ile incelensin.
   console.error('[güneş] Veri deposuna bağlanılamadı:', (e as Error).message, '→ npm run doctor');
