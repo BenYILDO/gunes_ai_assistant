@@ -8,3 +8,6 @@ data/
 *.log
 .DS_Store
 Thumbs.db
+
+# Tanıtım videosu seslendirme çıktısı
+seslendirme/
