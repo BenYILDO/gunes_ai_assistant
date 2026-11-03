@@ -4,9 +4,10 @@
  * 1) Güneş klasöründeki .env dosyasına ekleyin:   ELEVENLABS_API_KEY=...
  *    (Anahtar: elevenlabs.io → Profile → API Keys. Sohbete yapıştırmayın.)
  * 2) Güneş klasöründe çalıştırın:
- *      node scripts/promo/gunes-seslendir.mjs --list            (kullanabileceğiniz sesleri listeler)
- *      node scripts/promo/gunes-seslendir.mjs                   (varsayılan sesle seslendirir)
- *      node scripts/promo/gunes-seslendir.mjs <voice_id>        (seçtiğiniz sesle)
+ *    (Şirket ağında SSL denetimi varsa --use-system-ca gerekir.)
+ *      node --use-system-ca scripts/promo/gunes-seslendir.mjs --list            (kullanabileceğiniz sesleri listeler)
+ *      node --use-system-ca scripts/promo/gunes-seslendir.mjs   (varsayılan sesle seslendirir)
+ *      node --use-system-ca scripts/promo/gunes-seslendir.mjs <voice_id>        (seçtiğiniz sesle)
  * 3) Oluşan "seslendirme" klasöründeki tüm dosyaları sohbete yükleyin.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -24,12 +25,12 @@ if (process.argv[2] === '--list') {
   process.exit(0);
 }
 
-const VOICE = process.argv[2] || 'EXAVITQu4vr4xnSDxMaL'; // Sarah (hazır ses, ücretsiz planda kullanılabilir)
+const VOICE = process.argv[2] || 'cbqdgvVi3C6sgxIWpqIh'; // Yıldıray Bey'in seçtiği ses
 const MODEL = process.env.EL_MODEL || 'eleven_multilingual_v2';
 const SCRIPT = [
  {
   "id": "intro",
-  "text": "Bu Güneş, kendi yapay zekâ asistanım. Her sabah beni karşılıyor, Outlook'umu ve Teams'imi takip ediyor, işlerimi panoda tutuyor."
+  "text": "Bu, Güneş, kendi yapay zekâ asistanım. Her sabah beni karşılıyor, Outlook'umu ve Teams'imi takip ediyor, işlerimi panoda tutuyor."
  },
  {
   "id": "voice",
