@@ -49,6 +49,9 @@ if (hasSupabase) {
           bad("Supabase: haftalık rapor türü yok → supabase/migrations/0004_weekly.sql dosyasını SQL Editor'de çalıştırın");
           problems++;
         } else okMark('Supabase bağlantısı ve şema tamam');
+        // 0005: takvim bitiş saati (odak planı) — yoksa Güneş yine çalışır, süreyi 60 dk varsayar
+        const ends = await sb.from('events').select('ends_at').limit(1);
+        if (ends.error) warn("Supabase: 'events.ends_at' yok → odak planı toplantı sürelerini 60 dk varsayar. İsterseniz supabase/migrations/0005_event_end.sql dosyasını SQL Editor'de çalıştırın");
       } catch {
         bad("Supabase: wiki tabloları yok → supabase/migrations/0003_attribution_wiki.sql dosyasını SQL Editor'de çalıştırın");
         problems++;

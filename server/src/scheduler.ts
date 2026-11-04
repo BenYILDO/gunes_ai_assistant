@@ -8,6 +8,7 @@ import { runJob, runState } from './agents/pipeline.js';
 import { getStore } from './store/index.js';
 import { shouldDefer } from './usage.js';
 import { CANCELLED } from './focus.js';
+import { isoWeek } from './report.js';
 
 function localParts(d = new Date()) {
   const parts = new Intl.DateTimeFormat('en-GB', {
@@ -51,17 +52,6 @@ export async function tick() {
   const hoursSince = lastCollect ? (Date.now() - new Date(lastCollect).getTime()) / 3600_000 : Infinity;
   if (hoursSince >= config.schedule.trackerEveryHours - 0.05 && !(await shouldDefer('tracker'))) void runJob('tracker');
 }
-
-/** ISO hafta anahtarı (ör. 2026-W45) */
-function isoWeek(d = new Date()) {
-  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-  const day = t.getUTCDay() || 7;
-  t.setUTCDate(t.getUTCDate() + 4 - day);
-  const y = t.getUTCFullYear();
-  const w = Math.ceil(((t.getTime() - Date.UTC(y, 0, 1)) / 864e5 + 1) / 7);
-  return `${y}-W${String(w).padStart(2, '0')}`;
-}
-
 
 /** Toplantı hazırlığı (başlamadan 5–25 dk önce) ve toplantı sonrası (başlangıçtan 75–180 dk sonra) */
 async function meetingTick(time: string) {

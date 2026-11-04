@@ -7,6 +7,7 @@ import { getStore } from '../store/index.js';
 import { collectorPrompt, meetingFollowupPrompt, meetingPrepPrompt, notifierPrompt, plannerPrompt, reflectionPrompt, weeklyReportPrompt, wikiBuildPrompt } from './prompts.js';
 import { buildBoardContext, buildMemoryContext, buildWikiIndex, ensureSoul, formatEvents } from './soul.js';
 import { exportWiki } from '../wiki.js';
+import { saveReport } from '../report.js';
 
 export type JobKind = 'morning' | 'tracker' | 'backfill' | 'wiki' | 'prep' | 'followup' | 'weekly' | 'reflection';
 export interface JobOptions {
@@ -198,6 +199,12 @@ async function weeklyReport() {
   });
   log(`Haftalık rapor (${secs(t0)}): ${res.text.split('\n')[0]?.slice(0, 200)}`);
   if (res.isError) throw new Error(res.text.slice(0, 400));
+  // Rapor dosyası (Obsidian / OneDrive) — başarısız olursa iş başarısız sayılmaz
+  const b = await store.latestBriefing('weekly');
+  if (b && Date.now() - new Date(b.created_at).getTime() < 3600_000) {
+    const files = saveReport(b);
+    if (files.length) log(`Rapor kaydedildi: ${files.join(', ')}`);
+  }
 }
 
 async function weeklyReflection() {

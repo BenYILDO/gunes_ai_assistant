@@ -56,6 +56,8 @@ export const config = {
   /** Haftalık rapor + iç gözlem: gün (1=Pzt … 5=Cuma) ve saat */
   weeklyDay: Number(env('GUNES_WEEKLY_DAY', '5')),
   weeklyTime: env('GUNES_WEEKLY_TIME', '16:30'),
+  /** Haftalık rapor ayrıca bu klasöre de yazılır (ör. OneDrive yolu); boşsa sadece data/wiki/raporlar */
+  reportDir: env('GUNES_REPORT_DIR'),
   backfillDays: Number(env('GUNES_BACKFILL_DAYS', '45')),
   backfillChunkDays: Number(env('GUNES_BACKFILL_CHUNK_DAYS', '7')),
   /** Geçmiş taramasında aynı anda çalışan toplayıcı sayısı (sadece Supabase modunda) */

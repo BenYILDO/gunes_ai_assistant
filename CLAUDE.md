@@ -13,10 +13,17 @@ Kişisel asistan: Outlook/Teams'i takip eder, kanban yönetir, hafızası vardı
 - `server/src/wiki.ts` — LLM Wiki: slug, `[[bağlantı]]` çıkarma, `data/wiki` Obsidian kopyası (index.md, log.md). Ham kaynak = `events`, wiki = `wiki_pages`, dizi↔proje = `thread_links`.
 - `server/src/weather.ts` — Open-Meteo (anahtarsız) hava + gün doğumu/batımı; konum tarayıcıdan `/api/location` ile gelir.
 - `server/src/usage.ts` — Claude kullanım limiti (CLI `rate_limit_event`).
+- `server/src/search.ts` — birleşik arama (wiki + kart + olay + hafıza); `/api/search`, MCP `search_knowledge`, arayüzde Ctrl+K.
+- `server/src/focus.ts` — odak planı: takvim boşluklarını bulur, kartları öncelik/son tarihe göre yerleştirir (kural tabanlı, takvime yazmaz). `events.ends_at` (migration 0005) yoksa toplantı 60 dk sayılır.
+- `server/src/health.ts` — son çalışması hata veren işler (`/api/health`, arayüz uyarı bandı, yeniden dene) ve doctor ayar kontrolleri.
+- `server/src/usage.ts` — iş öncelik katmanları: kritik (morning/weekly/prep) yalnızca limit dolunca, normal (tracker) `GUNES_USAGE_PAUSE_AT`'ta, düşük (backfill/wiki/followup/reflection) `GUNES_USAGE_DEFER_AT`'ta ertelenir. Elle başlatılan işler (`manual`) ertelenmez.
+- `server/src/draft.ts` — kart için yanıt taslağı (araçsız, gönderilmez). `server/src/report.ts` — brifing/haftalık rapor Markdown dışa aktarma (`data/wiki/raporlar`, `GUNES_REPORT_DIR`).
+- `server/src/security.ts` — Host (DNS rebinding) ve Origin (CSRF) koruması; `/api` yazma isteklerinde yabancı Origin reddedilir.
 - `web/` — React + Vite + Tailwind v4 + `motion/react`. Tema `html[data-phase]` (dawn/day/dusk/night) CSS değişkenleriyle; `SunCore.tsx` ana görsel kimlik.
 
 ## Komutlar
 - `npm run build` · `npm start` · `npm run dev` · `npm run typecheck`
+- `npm test` — `server/test/` (node:test + tsx): MCP güvenlik kuralları (gerçek MCP sunucusunu başlatır), araç izinleri, Origin koruması, arama, odak planı, kullanım, rapor. CI: `.github/workflows/ci.yml`.
 - `npm run demo` (yerel modda örnek veri) · `npm run doctor -- --live`
 - Arayüz önizleme: `?intro=1`, `?phase=night`
 
@@ -24,6 +31,10 @@ Kişisel asistan: Outlook/Teams'i takip eder, kanban yönetir, hafızası vardı
 - Güneş asla mail/mesaj göndermez; M365 yazma araçları `config.ts` → `M365_FORBIDDEN_TOOLS` listesinde açıkça yasaklıdır. Bu listeyi daraltmayın.
 - Windows hedef platform: yollar `node:path` ile, `claude` başlatma `shell` gereksinimi `runner.ts`'de ele alınır. PowerShell betikleri UTF-8 BOM ile kaydedilmeli; `.vbs` dosyaları sadece ASCII.
 - Uzun içerik (ruh/hafıza/pano bağlamı) CLI'a argüman olarak değil **stdin** ile verilir (Windows komut satırı sınırı).
+
+## Testler
+- Test dosyaları `import './env.js'` ile BAŞLAMALI: geçici `GUNES_DATA_DIR` ve Supabase'siz yerel mod ayarlar (gerçek veriye dokunmaz).
+- `M365_FORBIDDEN_TOOLS`, ajan `done` yapamaz ve kilitli hafıza kuralları testle korunur; bunları gevşeten değişiklik testleri kırar (kasıtlı).
 
 ## Güneş panosu (MCP)
 Bu repoda `mcp__gunes__*` araçları kullanılabilir. Kullanıcı bir işi bitirdiğinde veya ilerleme kaydettiğinde ilgili kartı `update_card` (note ile) ya da `move_card` ile güncelleyin; kartı asla `done` yapmayın.

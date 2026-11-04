@@ -12,6 +12,7 @@ import { localDate } from './scheduler.js';
 import { getWeather, setLocation } from './weather.js';
 import { buildFocusPlan, dayKey } from './focus.js';
 import { generateDraft, TONES, type Tone } from './draft.js';
+import { briefingToMarkdown, reportFilename } from './report.js';
 import { RETRYABLE, runProblems } from './health.js';
 import { searchKnowledge, type SearchType } from './search.js';
 import { listUnseen, markPresence, markSeen } from './nudges.js';
@@ -389,6 +390,18 @@ export function apiRouter() {
         store.listBriefings(10),
       ]);
       res.json({ morning, weekly, reflection, updates: recent.filter((b) => b.kind === 'tracker').slice(0, 5) });
+    }),
+  );
+
+  /** Brifing / haftalık raporu Markdown dosyası olarak indirir */
+  r.get(
+    '/briefings/:id/export',
+    wrap(async (req, res) => {
+      const b = (await store.listBriefings(100)).find((x) => x.id === p(req));
+      if (!b) return void res.status(404).json({ error: 'Rapor bulunamadı.' });
+      res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${reportFilename(b)}"`);
+      res.send(briefingToMarkdown(b));
     }),
   );
 
