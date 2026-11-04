@@ -11,6 +11,7 @@ import { CARD_STATUSES, getStore, MEMORY_KINDS, PRIORITIES, type Card, type Memo
 import { localDate } from './scheduler.js';
 import { getWeather, setLocation } from './weather.js';
 import { buildFocusPlan, dayKey } from './focus.js';
+import { generateDraft, TONES, type Tone } from './draft.js';
 import { RETRYABLE, runProblems } from './health.js';
 import { searchKnowledge, type SearchType } from './search.js';
 import { listUnseen, markPresence, markSeen } from './nudges.js';
@@ -206,6 +207,34 @@ export function apiRouter() {
       const place = typeof req.body?.place === 'string' ? req.body.place.slice(0, 80) : undefined;
       await setLocation(lat, lon, place, place ? 'manual' : 'browser');
       res.json(await getWeather(true));
+    }),
+  );
+
+  // ---------- Yanıt taslağı (gönderilmez; sadece metin üretir)
+  r.post(
+    '/cards/:id/draft',
+    wrap(async (req, res) => {
+      const card = await store.getCard(p(req));
+      if (!card) return void res.status(404).json({ error: 'Kart bulunamadı.' });
+      const tone = (Object.keys(TONES) as Tone[]).includes(req.body?.tone) ? (req.body.tone as Tone) : 'kisa';
+      const [events, activity, projects] = await Promise.all([
+        store.listEvents({ sinceDays: 120, limit: 5000 }),
+        store.listActivity(card.id),
+        store.listProjects(),
+      ]);
+      // Karta bağlı olaylar + kaynaklarındaki external_id'ler
+      const ext = new Set(card.sources.map((s) => s.external_id).filter(Boolean));
+      const related = events.filter((e) => e.card_id === card.id || ext.has(e.external_id));
+      const draft = await generateDraft({
+        card,
+        projectName: projects.find((x) => x.id === card.project_id)?.name,
+        events: related,
+        activity,
+        tone,
+        note: typeof req.body?.note === 'string' ? req.body.note : undefined,
+        userName: config.userName,
+      });
+      res.json({ draft });
     }),
   );
 

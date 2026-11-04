@@ -189,6 +189,7 @@ export interface SearchHit {
 }
 
 export const api = {
+  draftReply: (id: string, tone: 'kisa' | 'resmi' | 'samimi', note?: string) => req<{ draft: string }>(`/cards/${id}/draft`, json('POST', { tone, note })),
   focus: (day: 'today' | 'tomorrow') => req<FocusPlan>(`/focus?day=${day}`),
   search: (q: string) => req<SearchHit[]>(`/search?q=${encodeURIComponent(q)}`),
   status: () => req<Status>('/status'),
