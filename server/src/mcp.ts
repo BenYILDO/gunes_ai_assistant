@@ -88,7 +88,8 @@ server.registerTool(
           z.object({
             source: z.enum(['outlook', 'teams', 'calendar', 'other']),
             external_id: z.string().describe('Mesajın/etkinliğin connector tarafından verilen kimliği'),
-            occurred_at: z.string().describe('ISO tarih-saat'),
+            occurred_at: z.string().describe('ISO tarih-saat (takvimde BAŞLANGIÇ)'),
+            ends_at: z.string().nullable().optional().describe('Sadece takvim etkinlikleri: BİTİŞ saati, ISO tarih-saat'),
             from_name: z.string().nullable().optional(),
             from_address: z.string().nullable().optional(),
             subject: z.string().nullable().optional(),
@@ -121,6 +122,7 @@ server.registerTool(
         source: e.source,
         external_id: e.external_id,
         occurred_at: e.occurred_at,
+        ...(e.ends_at ? { ends_at: e.ends_at } : {}),
         from_name: e.from_name ?? null,
         from_address: e.from_address ?? null,
         subject: e.subject ?? null,

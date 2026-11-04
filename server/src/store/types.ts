@@ -58,6 +58,8 @@ export interface EventItem {
   source: 'outlook' | 'teams' | 'calendar' | 'other';
   external_id: string;
   occurred_at: string;
+  /** Takvim etkinliklerinde bitiş saati (yoksa süre bilinmiyor) */
+  ends_at?: string | null;
   from_name: string | null;
   from_address: string | null;
   subject: string | null;

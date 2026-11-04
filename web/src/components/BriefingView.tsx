@@ -5,6 +5,7 @@ import type { AgendaItem } from '../lib/agenda';
 import type { Briefing, PendingAction, Status, Suggestion, Today, Weather } from '../lib/api';
 import { fmtTime, greetingOf, moodLine, relTime, type Phase } from '../lib/time';
 import { Approvals } from './Approvals';
+import { FocusPanel } from './FocusPanel';
 import { Markdown } from './Markdown';
 import { SuggestionsPanel } from './Suggestions';
 import { SunCore } from './SunCore';
@@ -243,6 +244,10 @@ export function BriefingView(p: Props) {
                 </div>
               </div>
             </Panel>
+          </motion.div>
+
+          <motion.div {...rise(6)}>
+            <FocusPanel onOpenCard={p.onOpenCard} />
           </motion.div>
 
           {/* Brifing bölümleri */}

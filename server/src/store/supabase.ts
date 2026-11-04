@@ -102,14 +102,13 @@ export class SupabaseStore implements Store {
 
   async insertEvents(events: NewEvent[]) {
     if (!events.length) return { inserted: 0, skipped: 0 };
-    const res = must(
-      await this.db
-        .from('events')
-        .upsert(events, { onConflict: 'source,external_id', ignoreDuplicates: true })
-        .select('id'),
-      'events insert',
-    ) as { id: string }[];
-    return { inserted: res.length, skipped: events.length - res.length };
+    const run = (rows: NewEvent[]) =>
+      this.db.from('events').upsert(rows, { onConflict: 'source,external_id', ignoreDuplicates: true }).select('id');
+    // ends_at kolonu (migration 0005) henüz yoksa, olay kaydı bozulmasın: alanı atıp yeniden dene
+    let res = await run(events);
+    if (res.error && /ends_at/.test(res.error.message)) res = await run(events.map(({ ends_at: _drop, ...e }) => e as NewEvent));
+    const rows = must(res, 'events insert') as { id: string }[];
+    return { inserted: rows.length, skipped: events.length - rows.length };
   }
   async listEvents(opts: { unprocessed?: boolean; limit?: number; sinceDays?: number }) {
     let q = this.db.from('events').select('*').order('occurred_at', { ascending: true });

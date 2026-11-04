@@ -47,6 +47,9 @@ export const config = {
     /** 1=Pazartesi … 7=Pazar */
     workDays: list('GUNES_WORK_DAYS', '1,2,3,4,5').map(Number),
   },
+  /** Odak planı: mesai başlangıcı ve öğle arası (boş bırakılırsa öğle arası yok), örn. 12:30-13:30 */
+  workStart: env('GUNES_WORK_START', '09:00'),
+  lunch: env('GUNES_LUNCH', '12:30-13:30'),
   /** Toplantı hazırlığı (başlamadan ~15 dk önce) ve toplantı sonrası aksiyonlar */
   meetingPrep: env('GUNES_MEETING_PREP', 'on') !== 'off',
   meetingFollowup: env('GUNES_MEETING_FOLLOWUP', 'on') !== 'off',

@@ -7,6 +7,7 @@ import { config } from './config.js';
 import { runJob, runState } from './agents/pipeline.js';
 import { getStore } from './store/index.js';
 import { shouldDefer } from './usage.js';
+import { CANCELLED } from './focus.js';
 
 function localParts(d = new Date()) {
   const parts = new Intl.DateTimeFormat('en-GB', {
@@ -61,7 +62,6 @@ function isoWeek(d = new Date()) {
   return `${y}-W${String(w).padStart(2, '0')}`;
 }
 
-const CANCELLED = /^(iptal|canceled|cancelled)\b/i;
 
 /** Toplantı hazırlığı (başlamadan 5–25 dk önce) ve toplantı sonrası (başlangıçtan 75–180 dk sonra) */
 async function meetingTick(time: string) {

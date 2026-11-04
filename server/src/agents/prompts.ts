@@ -41,6 +41,7 @@ ALANLAR
 - from_me: gönderen kullanıcının kendisiyse true.
 - thread_id: Outlook'ta varsa conversationId; yoksa "subj:" + RE:/FW:/YNT:/İLT: ön ekleri atılmış konu (küçük harf). Teams'te sohbet kimliği (teams:///chats/{chatId}/… içindeki chatId).
 - occurred_at: takvim etkinliklerinde toplantının BAŞLANGIÇ saati.
+- ends_at: SADECE takvim etkinliklerinde toplantının BİTİŞ saati (ISO). Odak planı boş zamanları buradan hesaplar; mail/Teams için yazma.
 - summary: Türkçe, 1-3 cümle, "kim ne istiyor / ne oldu".
 - excerpt: Söz, tarih, rakam, karar veya şikâyet içeren kritik cümleleri ORİJİNAL haliyle yaz (özetleme, çevirme).
 - needs_reply: Mesaj doğrudan kullanıcıya bir soru/istek yöneltiyorsa ve kullanıcı henüz cevap vermediyse true.

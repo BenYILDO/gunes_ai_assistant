@@ -4,7 +4,9 @@
 import { execSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { config, hasSupabase, ROOT } from './config.js';
+import { accessSync, constants, mkdirSync } from 'node:fs';
+import { config, DATA_DIR, hasSupabase, M365_FORBIDDEN_TOOLS, ROOT } from './config.js';
+import { configProblems, runProblems } from './health.js';
 import { runClaude } from './claude/runner.js';
 import { getStore } from './store/index.js';
 
@@ -84,6 +86,43 @@ if (config.azureSpeechKey) {
     problems++;
   }
 } else warn('Doğal ses ayarlı değil (AZURE_SPEECH_KEY) — tarayıcı sesi kullanılacak');
+
+
+// ---- Ayarlar, veri klasörü, çalışan sunucu ve son hatalar
+{
+  const issues = configProblems(config);
+  issues.length ? issues.forEach((i) => (bad(i), problems++)) : okMark('Zamanlama ve eşik ayarları tutarlı');
+
+  try {
+    mkdirSync(DATA_DIR, { recursive: true });
+    accessSync(DATA_DIR, constants.W_OK);
+    okMark(`Veri klasörü yazılabilir (${DATA_DIR})`);
+  } catch {
+    bad(`Veri klasörüne yazılamıyor: ${DATA_DIR}`);
+    problems++;
+  }
+
+  if (!M365_FORBIDDEN_TOOLS.includes('outlook_send_mail') || !M365_FORBIDDEN_TOOLS.includes('teams_send_channel_message')) {
+    bad('Güvenlik: yasaklı M365 araç listesi daraltılmış (config.ts → M365_FORBIDDEN_TOOLS)');
+    problems++;
+  } else okMark('Güvenlik: gönderme/silme araçları yasak listesinde');
+
+  config.teamsSelfChatId ? okMark('Teams özet sohbeti ayarlı') : warn('GUNES_TEAMS_SELF_CHAT_ID yok — sabah özeti Teams\'e gönderilmeyecek (isteğe bağlı)');
+
+  try {
+    const res = await fetch(`http://127.0.0.1:${config.port}/api/health`, { signal: AbortSignal.timeout(3000) });
+    const h = (await res.json()) as { problems: { kind: string; error: string }[] };
+    okMark(`Güneş sunucusu çalışıyor (http://localhost:${config.port})`);
+    for (const p of h.problems) warn(`Son ${p.kind} çalışması hata verdi: ${p.error.slice(0, 160)}`);
+  } catch {
+    warn(`Güneş sunucusu şu an çalışmıyor (port ${config.port}) — npm start ile başlatın`);
+    try {
+      for (const p of runProblems(await getStore().listRuns(60))) warn(`Son ${p.kind} çalışması hata vermiş: ${p.error.slice(0, 160)}`);
+    } catch {
+      /* depo okunamadıysa yukarıda bildirildi */
+    }
+  }
+}
 
 if (process.argv.includes('--live')) {
   console.log('\n  Canlı test: Claude (Haiku) ile Microsoft 365 connector deneniyor…');

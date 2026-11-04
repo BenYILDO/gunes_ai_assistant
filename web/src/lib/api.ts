@@ -169,6 +169,15 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 
 const json = (method: string, body?: unknown): RequestInit => ({ method, body: body ? JSON.stringify(body) : undefined });
 
+export interface FocusPlan {
+  day: string;
+  free_minutes: number;
+  slots: { start: string; end: string; minutes: number }[];
+  items: { card_id: string; title: string; priority: Priority; due_date: string | null; start: string; end: string; minutes: number; reason: string; partial: boolean }[];
+  overflow: { card_id: string; title: string; priority: Priority; due_date: string | null }[];
+  meetings: { title: string; start: string; end: string }[];
+}
+
 export interface SearchHit {
   type: 'wiki' | 'card' | 'event' | 'memory';
   id: string;
@@ -180,6 +189,7 @@ export interface SearchHit {
 }
 
 export const api = {
+  focus: (day: 'today' | 'tomorrow') => req<FocusPlan>(`/focus?day=${day}`),
   search: (q: string) => req<SearchHit[]>(`/search?q=${encodeURIComponent(q)}`),
   status: () => req<Status>('/status'),
   board: (all = false) => req<{ cards: Card[]; projects: Project[] }>(`/board${all ? '?all=1' : ''}`),

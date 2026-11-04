@@ -10,6 +10,7 @@ import { getUsage, refreshUsage } from './usage.js';
 import { CARD_STATUSES, getStore, MEMORY_KINDS, PRIORITIES, type Card, type MemoryKind, type PendingAction } from './store/index.js';
 import { localDate } from './scheduler.js';
 import { getWeather, setLocation } from './weather.js';
+import { buildFocusPlan, dayKey } from './focus.js';
 import { RETRYABLE, runProblems } from './health.js';
 import { searchKnowledge, type SearchType } from './search.js';
 import { listUnseen, markPresence, markSeen } from './nudges.js';
@@ -205,6 +206,19 @@ export function apiRouter() {
       const place = typeof req.body?.place === 'string' ? req.body.place.slice(0, 80) : undefined;
       await setLocation(lat, lon, place, place ? 'manual' : 'browser');
       res.json(await getWeather(true));
+    }),
+  );
+
+  // ---------- Odak planı: takvimdeki boşluklara kart önerileri (takvime yazmaz)
+  r.get(
+    '/focus',
+    wrap(async (req, res) => {
+      const now = Date.now();
+      const day = dayKey(now + (req.query.day === 'tomorrow' ? 864e5 : 0), config.timezone);
+      const [cards, events] = await Promise.all([store.listCards(), store.listEvents({ sinceDays: 3, limit: 2000 })]);
+      res.json(
+        buildFocusPlan({ cards, events, day, tz: config.timezone, workStart: config.workStart, workEnd: config.schedule.workEnd, lunch: config.lunch, now }),
+      );
     }),
   );
 
