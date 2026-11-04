@@ -167,7 +167,18 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 
 const json = (method: string, body?: unknown): RequestInit => ({ method, body: body ? JSON.stringify(body) : undefined });
 
+export interface SearchHit {
+  type: 'wiki' | 'card' | 'event' | 'memory';
+  id: string;
+  title: string;
+  snippet: string;
+  score: number;
+  date?: string;
+  meta?: Record<string, unknown>;
+}
+
 export const api = {
+  search: (q: string) => req<SearchHit[]>(`/search?q=${encodeURIComponent(q)}`),
   status: () => req<Status>('/status'),
   board: (all = false) => req<{ cards: Card[]; projects: Project[] }>(`/board${all ? '?all=1' : ''}`),
   createCard: (c: Partial<Card> & { title: string; project?: string }) => req<Card>('/cards', json('POST', c)),

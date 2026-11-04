@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { buildBoardContext, ensureSoul, formatEvents, STATUS_TR } from './agents/soul.js';
 import { extractLinks, slugify } from './wiki.js';
 import { createNudge, unseenIds } from './nudges.js';
+import { searchKnowledge } from './search.js';
 import { appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { config, DATA_DIR } from './config.js';
@@ -165,6 +166,28 @@ server.registerTool(
       ev
         .slice(-40)
         .map((e) => `[${e.id.slice(0, 8)}] ${e.occurred_at.slice(0, 10)} ${e.from_name ?? ''}: ${e.subject ?? ''} — ${e.summary}`)
+        .join('\n'),
+    );
+  },
+);
+
+server.registerTool(
+  'search_knowledge',
+  {
+    description:
+      'Wiki sayfaları, kartlar, geçmiş olaylar (mail/Teams/takvim) ve hafızada TEK seferde arar; en alakalıdan başlayarak sıralar. Bir kişi/proje/konu hakkında bilgi toplarken ilk bunu kullan.',
+    inputSchema: {
+      query: z.string().min(2),
+      types: z.array(z.enum(['wiki', 'card', 'event', 'memory'])).optional().describe('Boşsa hepsi'),
+      limit: z.number().int().min(1).max(30).default(12),
+    },
+  },
+  async ({ query, types, limit }) => {
+    const hits = await searchKnowledge(store, query, { types, limit });
+    if (!hits.length) return ok('Eşleşme yok.');
+    return ok(
+      hits
+        .map((h) => `[${h.type}:${h.type === 'wiki' ? h.id : h.id.slice(0, 8)}] ${h.title}${h.date ? ` (${h.date.slice(0, 10)})` : ''}\n  ${h.snippet}`)
         .join('\n'),
     );
   },

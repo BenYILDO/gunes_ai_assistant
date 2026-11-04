@@ -25,6 +25,7 @@ import { currentSpeech, setTtsProvider, voiceTest } from './lib/speech';
 import { runVoiceDiag } from './lib/voiceDiag';
 import { getSettings } from './lib/settings';
 import { SettingsPanel } from './components/SettingsPanel';
+import { SearchPalette } from './components/SearchPalette';
 import { isEcho, parseIntent, stripWake } from './lib/voiceCommands';
 import { NudgePopup } from './components/NudgePopup';
 import { Sky } from './components/Sky';
@@ -114,6 +115,8 @@ export default function App() {
   };
   const [farewell, setFarewell] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [wikiJump, setWikiJump] = useState<{ slug: string; n: number } | null>(null);
   const [voiceSegs, setVoiceSegs] = useState<Segment[] | null>(null);
   const [chatExternal, setChatExternal] = useState<{ id: number; text: string } | null>(null);
   const autoVoiceDone = useRef(false);
@@ -125,6 +128,17 @@ export default function App() {
   const [openCardId, setOpenCardId] = useState<string | null>(null);
   const [chatRef, setChatRef] = useState<ChatRef | null>(null);
   const [focusMode, setFocusMode] = useLocalFlag('gunes.boardFocus', false);
+
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setSearchOpen((o) => !o);
+      }
+    };
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, []);
 
   const status = usePoll(api.status, 4000);
   const running = status.data?.run.running ?? null;
@@ -464,6 +478,7 @@ export default function App() {
           weather={weather.data}
           onEndDay={() => setFarewell(true)}
           onSettings={() => setSettingsOpen(true)}
+          onSearch={() => setSearchOpen(true)}
         />
 
         {offline && (
@@ -541,7 +556,7 @@ export default function App() {
             )}
             {view === 'wiki' && (
               <motion.div key="wiki" className="h-full" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.15 } }}>
-                <WikiView pages={wiki.data ?? []} onOpenCard={setOpenCardId} onBuild={() => void run('wiki')} building={running === 'wiki'} onSelect={(p) => setChatRef({ kind: 'wiki', id: p.slug, title: p.title })} />
+                <WikiView jumpTo={wikiJump} pages={wiki.data ?? []} onOpenCard={setOpenCardId} onBuild={() => void run('wiki')} building={running === 'wiki'} onSelect={(p) => setChatRef({ kind: 'wiki', id: p.slug, title: p.title })} />
               </motion.div>
             )}
             {view === 'memory' && (
@@ -578,6 +593,17 @@ export default function App() {
         {voiceSegs && <VoiceBriefing key="voice" segments={voiceSegs} phase={phase} onAction={voiceAction} onExit={voiceExit} />}
       </AnimatePresence>
 
+      <SearchPalette
+        open={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        onPick={(h) => {
+          if (h.type === 'wiki') (setView('wiki'), setWikiJump((j) => ({ slug: h.id, n: (j?.n ?? 0) + 1 })));
+          else if (h.type === 'card') setOpenCardId(h.id);
+          else if (h.type === 'memory') setView('memory');
+          else if (typeof h.meta?.link === 'string' && h.meta.link) window.open(h.meta.link, '_blank', 'noopener');
+          else toast('Bu kaydın bağlantısı yok.', 'error');
+        }}
+      />
       <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} status={status.data} onVoiceTest={() => void runVoiceTest()} onVoiceDiag={() => void runDiag()} weather={weather.data} onLocationChanged={() => {
         void weather.refresh();
         void today.refresh();

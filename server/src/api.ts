@@ -10,6 +10,7 @@ import { getUsage, refreshUsage } from './usage.js';
 import { CARD_STATUSES, getStore, MEMORY_KINDS, PRIORITIES, type Card, type MemoryKind, type PendingAction } from './store/index.js';
 import { localDate } from './scheduler.js';
 import { getWeather, setLocation } from './weather.js';
+import { searchKnowledge, type SearchType } from './search.js';
 import { listUnseen, markPresence, markSeen } from './nudges.js';
 import { synthesize, TtsError, ttsEnabled, ttsUsage, TTS_VOICES } from './tts.js';
 import { briefingFollowup, closeAppWindow, daySummary, endDay } from './day.js';
@@ -202,6 +203,20 @@ export function apiRouter() {
       const place = typeof req.body?.place === 'string' ? req.body.place.slice(0, 80) : undefined;
       await setLocation(lat, lon, place, place ? 'manual' : 'browser');
       res.json(await getWeather(true));
+    }),
+  );
+
+  // ---------- Arama (wiki + kart + olay + hafıza)
+  r.get(
+    '/search',
+    wrap(async (req, res) => {
+      const q = String(req.query.q ?? '').trim();
+      if (q.length < 2) return void res.json([]);
+      const all: SearchType[] = ['wiki', 'card', 'event', 'memory'];
+      const types = String(req.query.types ?? '')
+        .split(',')
+        .filter((t): t is SearchType => (all as string[]).includes(t));
+      res.json(await searchKnowledge(store, q, { types: types.length ? types : undefined, limit: 40 }));
     }),
   );
 
