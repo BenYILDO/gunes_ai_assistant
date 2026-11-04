@@ -16,7 +16,8 @@ const list = (k: string, d = '') =>
     .map((s) => s.trim())
     .filter(Boolean);
 
-export const DATA_DIR = join(ROOT, 'data');
+/** Veri klasörü; testler GUNES_DATA_DIR ile geçici klasör kullanır. */
+export const DATA_DIR = process.env.GUNES_DATA_DIR?.trim() ? resolve(process.env.GUNES_DATA_DIR.trim()) : join(ROOT, 'data');
 if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
 
 export const config = {

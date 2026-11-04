@@ -19,9 +19,10 @@
     "run:morning": "node --use-system-ca server/dist/cli.js morning",
     "run:tracker": "node --use-system-ca server/dist/cli.js tracker",
     "run:backfill": "node --use-system-ca server/dist/cli.js backfill",
-    "typecheck": "tsc -p server/tsconfig.json --noEmit && tsc -p web/tsconfig.json --noEmit",
+    "typecheck": "tsc -p server/tsconfig.json --noEmit && tsc -p server/test/tsconfig.json --noEmit && tsc -p web/tsconfig.json --noEmit",
     "demo": "node --use-system-ca server/dist/demo.js",
-    "timing": "node server/dist/timing.js"
+    "timing": "node server/dist/timing.js",
+    "test": "node --import tsx --test --test-reporter=spec --test-concurrency=1 \"server/test/**/*.test.ts\""
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",

@@ -4,16 +4,14 @@ import { join } from 'node:path';
 import { config, ROOT } from './config.js';
 import { apiRouter } from './api.js';
 import { ensureSoul } from './agents/soul.js';
+import { hostGuard, originGuard } from './security.js';
 import { startScheduler } from './scheduler.js';
 import { getStore } from './store/index.js';
 
 const app = express();
-// DNS rebinding koruması: sadece localhost adlarıyla gelen isteklere cevap ver
-const allowedHosts = new Set([`localhost:${config.port}`, `127.0.0.1:${config.port}`, `[::1]:${config.port}`]);
-app.use((req, res, next) => {
-  if (!allowedHosts.has(String(req.headers.host))) return void res.status(403).send('Forbidden');
-  next();
-});
+// DNS rebinding + CSRF koruması (bkz. security.ts)
+app.use(hostGuard(config.port));
+app.use('/api', originGuard(config.port));
 app.use(express.json({ limit: '1mb' }));
 app.use('/api', apiRouter());
 
