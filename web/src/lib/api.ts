@@ -117,6 +117,8 @@ export interface ChatSession { id: string; title: string; updated_at: string }
 export interface ChatMessage { id: string; role: 'user' | 'assistant'; content: string; tools: string[]; created_at: string }
 export interface AgentRun { id: string; kind: string; status: string; started_at: string; finished_at: string | null; error: string | null; stats: Record<string, unknown> }
 
+export interface RunProblem { id: string; kind: string; error: string; hint: string | null; at: string; retryable: boolean }
+
 export interface UsageWindow { utilization: number | null; resetsAt: string | null; status: string }
 export interface Usage {
   status: string;
@@ -211,6 +213,8 @@ export const api = {
   presence: (visible: boolean) => req('/presence', json('POST', { visible })),
   refreshUsage: () => req<Usage | null>('/usage/refresh', json('POST')),
   runs: () => req<AgentRun[]>('/runs'),
+  health: () => req<{ problems: RunProblem[] }>('/health'),
+  retryRun: (id: string) => req(`/runs/${id}/retry`, json('POST')),
   memory: () => req<{ memories: Memory[]; journal: JournalEntry[] }>('/memory'),
   addMemory: (m: Partial<Memory>) => req<Memory>('/memory', json('POST', m)),
   updateMemory: (id: string, m: Partial<Memory>) => req<Memory>(`/memory/${id}`, json('PATCH', m)),

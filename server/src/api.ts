@@ -10,6 +10,7 @@ import { getUsage, refreshUsage } from './usage.js';
 import { CARD_STATUSES, getStore, MEMORY_KINDS, PRIORITIES, type Card, type MemoryKind, type PendingAction } from './store/index.js';
 import { localDate } from './scheduler.js';
 import { getWeather, setLocation } from './weather.js';
+import { RETRYABLE, runProblems } from './health.js';
 import { searchKnowledge, type SearchType } from './search.js';
 import { listUnseen, markPresence, markSeen } from './nudges.js';
 import { synthesize, TtsError, ttsEnabled, ttsUsage, TTS_VOICES } from './tts.js';
@@ -416,6 +417,22 @@ export function apiRouter() {
   r.get(
     '/runs',
     wrap(async (_req, res) => res.json(await store.listRuns(30))),
+  );
+  /** Son çalışması hata veren işler (arayüzde uyarı bandı) */
+  r.get(
+    '/health',
+    wrap(async (_req, res) => res.json({ problems: runProblems(await store.listRuns(60)) })),
+  );
+  r.post(
+    '/runs/:id/retry',
+    wrap(async (req, res) => {
+      const run = (await store.listRuns(100)).find((x) => x.id === p(req));
+      if (!run) return void res.status(404).json({ error: 'Çalışma bulunamadı.' });
+      if (!RETRYABLE.includes(run.kind)) return void res.status(400).json({ error: 'Bu iş tek başına yeniden başlatılamaz.' });
+      if (runState.running) return void res.status(409).json({ error: 'Şu an başka bir çalışma sürüyor.' });
+      void runJob(run.kind as JobKind, { manual: true });
+      res.json({ ok: true, queued: run.kind });
+    }),
   );
 
   // ---------- Hafıza

@@ -89,7 +89,7 @@ export function HistoryView({
                     <div className="min-w-0 flex-1">
                       <div>{KIND_TR[r.kind] ?? r.kind}</div>
                       {r.error && <div className="truncate text-[11px] text-danger/80" title={r.error}>{r.error}</div>}
-                      {r.status === 'skipped' && <div className="text-[11px] text-ink-faint">Yeni gelişme yoktu</div>}
+                      {r.status === 'skipped' && <div className="text-[11px] text-ink-faint">{r.stats?.reason === 'usage' ? 'Claude kullanımı yüksekti, ertelendi' : 'Yeni gelişme yoktu'}</div>}
                     </div>
                     <div className="text-right text-[11px] text-ink-faint">
                       <div>

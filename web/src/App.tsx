@@ -26,6 +26,7 @@ import { runVoiceDiag } from './lib/voiceDiag';
 import { getSettings } from './lib/settings';
 import { SettingsPanel } from './components/SettingsPanel';
 import { SearchPalette } from './components/SearchPalette';
+import { ProblemBanner } from './components/ProblemBanner';
 import { isEcho, parseIntent, stripWake } from './lib/voiceCommands';
 import { NudgePopup } from './components/NudgePopup';
 import { Sky } from './components/Sky';
@@ -145,6 +146,7 @@ export default function App() {
   useEffect(() => {
     if (status.data?.tts) setTtsProvider(status.data.tts.provider);
   }, [status.data?.tts?.provider]);
+  const health = usePoll(api.health, 20000);
   const board = usePoll(() => api.board(), 15000);
   const briefing = usePoll(api.briefing, 30000);
   const suggestions = usePoll(api.suggestions, 30000);
@@ -479,6 +481,16 @@ export default function App() {
           onEndDay={() => setFarewell(true)}
           onSettings={() => setSettingsOpen(true)}
           onSearch={() => setSearchOpen(true)}
+        />
+
+        <ProblemBanner
+          problems={health.data?.problems ?? []}
+          busy={Boolean(running)}
+          onRetried={() => {
+            void status.refresh();
+            void health.refresh();
+          }}
+          onOpenHistory={() => setView('history')}
         />
 
         {offline && (
