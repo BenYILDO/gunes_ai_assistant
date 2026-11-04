@@ -59,6 +59,8 @@ export const config = {
   backfillParallel: Number(env('GUNES_BACKFILL_PARALLEL', '3')),
   /** 5 saatlik kullanım bu oranı geçerse 2 saatlik takip ertelenir (sohbete yer kalsın) */
   usagePauseAt: Number(env('GUNES_USAGE_PAUSE_AT', '0.85')),
+  /** Düşük öncelikli işler (geçmiş tarama, wiki, toplantı sonrası, iç gözlem) bu oranda ertelenir */
+  usageDeferAt: Number(env('GUNES_USAGE_DEFER_AT', '0.70')),
 
   /** Doğal ses (Azure Speech F0, ücretsiz): portal.azure.com → Speech service → Keys and Endpoint */
   azureSpeechKey: env('AZURE_SPEECH_KEY'),

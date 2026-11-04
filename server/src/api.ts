@@ -77,6 +77,7 @@ export function apiRouter() {
         usage: await getUsage(),
         models: { chat: config.modelChat, think: config.modelThink, scan: config.modelScan },
         usagePauseAt: config.usagePauseAt,
+        usageDeferAt: config.usageDeferAt,
         tts: { provider: ttsEnabled() ? 'azure' : 'browser', voice: config.ttsVoice, voices: TTS_VOICES, usage: ttsEnabled() ? await ttsUsage() : null },
         labels: { status: STATUS_TR, stats: STAT_TR },
       });
@@ -408,7 +409,7 @@ export function apiRouter() {
     wrap(async (req, res) => {
       const k = String(req.params.kind) as JobKind;
       if (!['morning', 'tracker', 'backfill', 'wiki', 'weekly', 'reflection'].includes(k)) return void res.status(400).json({ error: `Bilinmeyen: ${k}` });
-      void runJob(k);
+      void runJob(k, { manual: true });
       res.json({ ok: true, queued: k });
     }),
   );

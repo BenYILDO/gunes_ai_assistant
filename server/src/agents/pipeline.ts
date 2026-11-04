@@ -1,5 +1,5 @@
 import { config } from '../config.js';
-import { usageIsHigh } from '../usage.js';
+import { shouldDefer } from '../usage.js';
 import { getWeather } from '../weather.js';
 import { announceNew, unseenIds } from '../nudges.js';
 import { runClaude, type RunnerEvent } from '../claude/runner.js';
@@ -12,6 +12,8 @@ export type JobKind = 'morning' | 'tracker' | 'backfill' | 'wiki' | 'prep' | 'fo
 export interface JobOptions {
   /** prep/followup: takvim olayının veritabanı id'si */
   eventId?: string;
+  /** Kullanıcı elle başlattı: kullanım limiti ertelemesi uygulanmaz */
+  manual?: boolean;
 }
 
 /** Arayüzün canlı gösterdiği çalışma durumu. */
@@ -316,6 +318,12 @@ async function execute(kind: JobKind, opts: JobOptions = {}) {
   const startedAt = new Date();
   const nudgesBefore = await unseenIds(store).catch(() => [] as string[]);
   try {
+    if (!opts.manual && (await shouldDefer(kind))) {
+      log('Claude kullanımı yüksek; bu iş sohbete yer kalsın diye ertelendi.');
+      await store.finishRun(run.id, { status: 'skipped', stats: { reason: 'usage' } });
+      runState.lastResult = { kind, status: 'skipped', at: new Date().toISOString(), message: 'Kullanım yüksek, ertelendi' };
+      return;
+    }
     if (kind === 'prep' || kind === 'followup') {
       await meetingJob(kind, opts.eventId);
     } else if (kind === 'weekly') {
@@ -354,12 +362,6 @@ async function execute(kind: JobKind, opts: JobOptions = {}) {
       await plan('backfill');
       await store.setState('backfill_done', startedAt.toISOString());
     } else {
-      if (kind === 'tracker' && (await usageIsHigh())) {
-        log('Claude kullanımı yüksek; takip, sohbete yer kalsın diye ertelendi.');
-        await store.finishRun(run.id, { status: 'skipped', stats: { reason: 'usage' } });
-        runState.lastResult = { kind, status: 'skipped', at: new Date().toISOString(), message: 'Kullanım yüksek, ertelendi' };
-        return;
-      }
       const from = await lastCollect(kind === 'morning' ? 24 : 3);
       await collect(from, startedAt, true);
       await store.setState('last_collect', startedAt.toISOString());

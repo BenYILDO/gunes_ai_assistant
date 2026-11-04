@@ -6,7 +6,7 @@
 import { config } from './config.js';
 import { runJob, runState } from './agents/pipeline.js';
 import { getStore } from './store/index.js';
-import { usageIsHigh } from './usage.js';
+import { shouldDefer } from './usage.js';
 
 function localParts(d = new Date()) {
   const parts = new Intl.DateTimeFormat('en-GB', {
@@ -37,6 +37,8 @@ export async function tick() {
 
   const lastMorning = await store.getState('last_morning');
   if (localDate(lastMorning) !== now.date) {
+    // Limit doluysa her dakika "ertelendi" kaydı açmamak için çalıştırmadan bekle
+    if (await shouldDefer('morning')) return;
     void runJob('morning');
     return;
   }
@@ -46,7 +48,7 @@ export async function tick() {
 
   const lastCollect = await store.getState('last_collect');
   const hoursSince = lastCollect ? (Date.now() - new Date(lastCollect).getTime()) / 3600_000 : Infinity;
-  if (hoursSince >= config.schedule.trackerEveryHours - 0.05) void runJob('tracker');
+  if (hoursSince >= config.schedule.trackerEveryHours - 0.05 && !(await shouldDefer('tracker'))) void runJob('tracker');
 }
 
 /** ISO hafta anahtarı (ör. 2026-W45) */
@@ -74,6 +76,7 @@ async function meetingTick(time: string) {
     if (config.meetingPrep && time <= config.schedule.workEnd && mins >= 5 && mins <= 25) {
       const key = `prep:${m.external_id}`;
       if (await store.getState(key)) continue;
+      if (await shouldDefer('prep')) continue;
       await store.setState(key, new Date().toISOString());
       void runJob('prep', { eventId: m.id });
       return true;
@@ -81,7 +84,7 @@ async function meetingTick(time: string) {
     if (config.meetingFollowup && mins <= -75 && mins >= -180) {
       const key = `followup:${m.external_id}`;
       if (await store.getState(key)) continue;
-      if (await usageIsHigh()) continue;
+      if (await shouldDefer('followup')) continue;
       await store.setState(key, new Date().toISOString());
       void runJob('followup', { eventId: m.id });
       return true;
@@ -97,11 +100,12 @@ async function weeklyTick(now: { time: string; weekday: number }) {
   const store = getStore();
   const week = isoWeek();
   if ((await store.getState('weekly_week')) !== week) {
+    if (await shouldDefer('weekly')) return false;
     await store.setState('weekly_week', week);
     void runJob('weekly');
     return true;
   }
-  if ((await store.getState('reflection_week')) !== week && !(await usageIsHigh())) {
+  if ((await store.getState('reflection_week')) !== week && !(await shouldDefer('reflection'))) {
     await store.setState('reflection_week', week);
     void runJob('reflection');
     return true;
