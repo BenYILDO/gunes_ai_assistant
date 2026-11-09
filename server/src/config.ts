@@ -105,6 +105,8 @@ export const config = {
     callWatch: env('GUNES_CALL_WATCH', 'on') !== 'off',
     /** Arama algılanınca Windows'ta kendi başına çıkan "katılmamı ister misiniz?" penceresi (Güneş penceresi kapalı/arkada olsa da görünür). off = yalnızca tarayıcı popup'ı */
     callPopup: env('GUNES_CALL_POPUP', 'on') !== 'off',
+    /** Takvimdeki toplantıdan bu kadar saniye önce (aramanın çalmasını beklemeden) "katılayım mı?" diye sorar. 0 = kapalı */
+    preCallLeadSec: Math.max(0, Number(env('GUNES_PRECALL_LEAD_SEC', '60')) || 0),
     /** "Katıl" denince arama penceresinin görüntüsü alınıp Claude'a verilerek arayanın adı okunur (görüntü saklanmaz). off = kapalı */
     callScreenshot: env('GUNES_CALL_SCREENSHOT', 'on') !== 'off',
     /** Hangi uygulamaların mikrofon kullanımı "arama" sayılır (tarayıcılar Güneş'in kendi sesli komutuyla karışmasın diye yok) */

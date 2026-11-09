@@ -11,6 +11,7 @@ import { getStore } from '../store/index.js';
 import type { EventItem, Meeting, MeetingCue, VoiceProfile } from '../store/types.js';
 import { exportWiki, extractLinks, slugify } from '../wiki.js';
 import { run, meetingTools } from './tools.js';
+import { classifyCuesByChannel, ownLabel } from './channels.js';
 import { candidateProfiles, centroid, clusterUnknown, recognize, sameName, summarizeSpeakers, type CueVector, type VoiceCluster } from './voices.js';
 
 /** Kullanıcıya gösterilecek, HTTP durumu olan beklenen hata (404/400/409) */
@@ -179,18 +180,30 @@ async function doProcess(id: string) {
     await setStep(id, 'Konuşmacılar tanınıyor');
     const attendees = await attendeesP;
     const profiles = candidateProfiles(await store.listVoiceProfiles(), attendees, config.userName).filter((p) => p.model === config.meetings.embeddingModel || !p.model);
-    const rec = recognize(vectors, profiles, config.meetings.voiceThreshold);
-    const unknown = vectors.filter((x) => !rec.get(x.i)?.speaker);
+    // Kendi sesiniz: yerel yakalama stereo (sol mikrofon / sağ karşı taraf); mikrofon baskınsa satır sizindir, işaretlemeniz gerekmez
+    const ch = /capture\.wav$/i.test(m0.audio_file) ? await classifyCuesByChannel(t.ffmpeg!, m0.audio_file, dir, raw).catch(() => null) : null;
+    const userLabel = ch ? ownLabel(config.userName, attendees, profiles.map((p) => p.name)) : null;
+    const isUser = (i: number) => !!ch && !!userLabel && ch[i]?.cls === 'user';
+    const rec = recognize(vectors.filter((x) => !isUser(x.i)), profiles, config.meetings.voiceThreshold);
+    // Karşı taraf kanalında konuşan satır siz olamaz: ses profili sizi söylese bile tanınmamış say
+    if (ch && userLabel) for (const [i, r] of rec) if (ch[i]?.cls === 'remote' && r.speaker && sameName(r.speaker, userLabel)) rec.set(i, { speaker: null, score: r.score });
+    const unknown = vectors.filter((x) => !isUser(x.i) && !rec.get(x.i)?.speaker);
     const clusters = clusterUnknown(unknown);
     const clusterOf = new Map<number, string>();
     for (const cl of clusters) for (const i of cl.members) clusterOf.set(i, cl.id);
 
     const cues: MeetingCue[] = raw.map((c, i) => {
+      if (isUser(i)) return { b: c.b, e: c.e, text: c.text, speaker: userLabel, score: null, cluster: null };
       const r = rec.get(i);
       return { b: c.b, e: c.e, text: c.text, speaker: r?.speaker ?? null, score: r?.score != null ? Math.round(r.score * 100) / 100 : null, cluster: clusterOf.get(i) ?? null };
     });
-    // Çok kısa satırlar (vektör yok): bir önceki konuşmacıyı devral
-    for (let i = 1; i < cues.length; i++) if (!rec.has(i)) Object.assign(cues[i]!, { speaker: cues[i - 1]!.speaker, cluster: cues[i - 1]!.cluster });
+    // Çok kısa satırlar (vektör yok): kanal biliniyorsa ona göre, değilse bir önceki konuşmacıyı devral
+    for (let i = 1; i < cues.length; i++) {
+      if (rec.has(i) || isUser(i)) continue;
+      const prev = cues[i - 1]!;
+      if (ch && userLabel && ch[i]?.cls === 'remote' && prev.speaker === userLabel) continue; // sizin satırınızı devralma
+      Object.assign(cues[i]!, { speaker: prev.speaker, cluster: prev.cluster });
+    }
     const speakers = summarizeSpeakers(cues, clusters);
 
     await store.updateMeeting(id, {

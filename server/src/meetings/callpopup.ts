@@ -20,7 +20,18 @@ export type PopupResult = 'join' | 'decline' | 'timeout' | 'closed' | 'error';
 const clip = (s: string | null | undefined, n: number) => (s ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 
 /** Saf: pencere metni (tarayıcıdaki popup ile aynı dil). */
-export function popupText(o: { app: string | null; planned: boolean; eventSubject: string | null; screenshot: boolean; ringing?: boolean }): PopupText {
+export function popupText(o: { app: string | null; planned: boolean; eventSubject: string | null; screenshot: boolean; ringing?: boolean; upcoming?: { minutes: number } }): PopupText {
+  if (o.upcoming) {
+    const m = o.upcoming.minutes;
+    const when = m <= 0 ? 'şimdi başlıyor' : m < 2 ? '1 dakika içinde başlıyor' : `${m} dakika içinde başlıyor`;
+    return {
+      title: 'Toplantı başlıyor',
+      body: `Takvimde ${clip(o.eventSubject, 80) || 'bir toplantı'} ${when}. Aramaya katılayım mı?`,
+      note: 'Katıl derseniz hemen dinlemeye başlarım; arama gelince/mikrofon açılınca aynı kayda bağlanır. Mikrofon hiç açılmazsa kaydı atarım. Sesi (mikrofonunuz + karşı taraf) yazıya çeviririm; ekran paylaşımı gerekmez. Ses 30 gün sonra silinir.',
+      join: 'Katıl',
+      decline: 'Şimdi değil',
+    };
+  }
   const who = o.ringing ? 'Teams’te bir arama çalıyor. ' : o.app ? `${clip(o.app, 30)} mikrofonu açtı. ` : '';
   const cal = o.planned && o.eventSubject ? `Takvimde bu saatte ${clip(o.eventSubject, 80)} var.` : o.ringing ? '' : 'Takvimde görünmüyor, plansız bir arama gibi.';
   return {

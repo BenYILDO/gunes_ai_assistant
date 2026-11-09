@@ -138,6 +138,30 @@ export function matchEvent(events: EventItem[], now: number): EventItem | null {
   return best;
 }
 
+/** Toplantı olmayan takvim kayıtları (odak zamanı, öğle, izin...) için sorulmaz */
+const NOT_A_CALL = /(odak|focus|öğle|ogle|lunch|izin|tatil|ooo|out of office|yemek|hatırlatma|doktor|seyahat|travel|blok|block)/i;
+
+/**
+ * Saf: takvimde şimdi "katılayım mı?" diye sorulacak toplantı. Başlamasına `leadSec` kala (ve başladıktan sonra 3 dk'ya kadar, Güneş geç
+ * açıldıysa) açılır; daha önce sorulanlar (asked) atlanır. 5 dk'dan kısa ya da 4 saatten uzun/tüm gün kayıtlar ve toplantı olmayanlar elenir.
+ */
+export function nextPlanned(events: EventItem[], now: number, leadSec: number, asked: Set<string>): EventItem | null {
+  if (leadSec <= 0) return null;
+  let best: EventItem | null = null;
+  let bestS = Infinity;
+  for (const e of events) {
+    if (e.source !== 'calendar' || asked.has(e.external_id)) continue;
+    const s = Date.parse(e.occurred_at);
+    if (!Number.isFinite(s)) continue;
+    if (now < s - leadSec * 1000 || now > s + 3 * 60_000) continue;
+    const dur = e.ends_at ? (Date.parse(e.ends_at) - s) / 60_000 : 30;
+    if (!(dur >= 5 && dur <= 240)) continue;
+    if (NOT_A_CALL.test(e.subject ?? e.summary ?? '')) continue;
+    if (s < bestS) ((best = e), (bestS = s));
+  }
+  return best;
+}
+
 export interface CallSnapshot {
   /** Arayüz bu durumdayken pencereyi gösterir */
   prompt: boolean;
@@ -176,6 +200,52 @@ class CallWatcher {
   private ringMeetingId: string | null = null;
   private cal: EventItem[] = [];
   private calAt = 0;
+  /** Takvimden önceden sorulan toplantılar (her toplantı için bir kez) */
+  private asked = new Set<string>();
+  private planPopup: PopupHandle | null = null;
+  /** "Katıl" denmiş, mikrofonun açılması (aramanın gelmesi) beklenen takvim toplantısı */
+  private planned: { meetingId: string; event: EventItem; startMs: number } | null = null;
+
+  /** Başlamasına az kalan takvim toplantısı için, arama çalmasını beklemeden Windows popup'ıyla sorar */
+  private async askPlanned(now: number) {
+    if (!config.meetings.callPopup || !nativeAvailable() || this.planPopup || this.planned || this.data.id) return;
+    const e = nextPlanned(this.cal, now, config.meetings.preCallLeadSec, this.asked);
+    if (!e) return;
+    this.asked.add(e.external_id);
+    const meetings = await getStore().listMeetings(5).catch(() => []);
+    if (meetings.some((m) => m.status === 'recording')) return; // zaten dinleniyor
+    const minutes = Math.round((Date.parse(e.occurred_at) - now) / 60_000);
+    const handle = showCallPopup(popupText({ app: null, planned: true, eventSubject: e.subject ?? e.summary, screenshot: false, upcoming: { minutes } }));
+    this.planPopup = handle;
+    void handle.result.then(async (r) => {
+      if (this.planPopup === handle) this.planPopup = null;
+      if (r !== 'join') return;
+      if (this.data.id) return void (await this.joinNative()); // bu arada arama başladı: normal yol
+      await this.startPlanned(e);
+    });
+  }
+
+  private async startPlanned(e: EventItem) {
+    try {
+      const { meeting } = await startLiveMeeting({ title: e.subject ?? e.summary.slice(0, 80), event: e.external_id, native: true, fromCall: true, requireNative: true });
+      this.joinError = null;
+      this.planned = { meetingId: meeting.id, event: e, startMs: Date.parse(e.occurred_at) };
+    } catch (err) {
+      this.joinError = (err as Error).message.slice(0, 200);
+    }
+  }
+
+  /** Takvim toplantısı için başlayan dinleme: mikrofon hiç açılmadıysa (arama gelmedi) başlangıçtan 15 dk sonra kayıt ATILIR */
+  private async dropPlanned() {
+    const p = this.planned;
+    this.planned = null;
+    if (!p) return;
+    const st = await getStore().getMeeting(p.meetingId).catch(() => null);
+    if (st?.status !== 'recording') return; // kullanıcı elle durdurdu/işlendi: dokunma
+    await abortNative(p.meetingId).catch(() => {});
+    await getStore().deleteMeeting(p.meetingId).catch(() => {});
+    removeMeetingFiles(p.meetingId);
+  }
 
   start() {
     if (this.timer || process.platform !== 'win32' || !config.meetings.callWatch) return;
@@ -204,7 +274,8 @@ class CallWatcher {
   private onRingEvent = (e: RingEvent) => {
     const now = Date.now();
     if (e.type === 'toast') {
-      if (this.data.id) return; // zaten bir arama izleniyor
+      if (this.data.id || this.planned) return; // zaten bir arama izleniyor / takvimden dinleme başladı (mikrofon açılınca bağlanır)
+      this.planPopup?.close(); // takvim sorusu açıkken arama çaldı: arama sorusu geçerli
       this.data = { id: `ring:${e.hwnd}`, app: 'Teams', since: now, lastSeen: now, status: 'detecting' };
       this.event = null;
       this.identity = NO_IDENTITY;
@@ -283,7 +354,22 @@ class CallWatcher {
       } else if (this.ring && this.ring.goneAt === null && this.data.id) {
         this.data = { ...this.data, lastSeen: now }; // bildirim penceresi sürdükçe çalan oturum canlı
       }
+      // Takvimden başlayan dinleme: mikrofon açıldı → bu aramaya bağla (tekrar sorma, kararı zaten "katıl")
+      let planAdopted = false;
+      if (this.planned && obs && !this.data.id) {
+        const p = this.planned;
+        this.planned = null;
+        planAdopted = true;
+        this.data = { id: obs.sid, app: obs.app, since: now, lastSeen: now, status: 'joined' };
+        this.popupFor = obs.sid;
+        this.event = p.event;
+        this.attachId = p.meetingId;
+        this.identity = NO_IDENTITY;
+      }
       this.data = stepCall(this.data, obs, now);
+      if (this.planned && !obs && now > this.planned.startMs + 15 * 60_000) await this.dropPlanned();
+      if (this.data.id) this.planPopup?.close();
+      else if (!this.planPopup && !this.planned) await this.askPlanned(now);
       // Çaldı ama cevaplanmadı
       if (this.ring && !this.ring.answered && this.ring.goneAt && now - this.ring.goneAt > 4000 && !obs) await this.endRingUnanswered();
       // Arama bitti (mikrofon kapandı): Güneş'in o arama için başlattığı yerel dinleme kendiliğinden biter ve işlenir
@@ -293,7 +379,7 @@ class CallWatcher {
         const st = nativeStatus();
         if (st?.fromCall && !st.stopping) void finishNative(st.meetingId).catch(() => {});
       }
-      if (this.data.id !== before.id && !adopted) {
+      if (this.data.id !== before.id && !adopted && !planAdopted) {
         this.event = null;
         this.identity = NO_IDENTITY;
         this.attachId = null;
