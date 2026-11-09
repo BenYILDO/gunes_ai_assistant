@@ -15,7 +15,7 @@ export const WEATHER_ICON: Record<WeatherKind, LucideIcon> = {
   storm: CloudLightning,
 };
 
-export function WeatherChip({ weather }: { weather: Weather | null }) {
+export function WeatherChip({ weather, compact = false }: { weather: Weather | null; compact?: boolean }) {
   if (!weather) return null;
   const Icon = weather.kind === 'clear' && !weather.isDay ? Moon : WEATHER_ICON[weather.kind];
   const title = [
@@ -27,6 +27,16 @@ export function WeatherChip({ weather }: { weather: Weather | null }) {
   ]
     .filter(Boolean)
     .join('\n');
+  if (compact) {
+    // Saatin altında tek satır: simge, sıcaklık, durum · konum
+    return (
+      <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} title={title} className="flex max-w-[260px] items-center gap-1.5 text-[11px] leading-none text-ink-dim">
+        <Icon size={13} className="shrink-0 text-accent" />
+        <span className="font-display text-xs font-semibold tabular-nums text-ink">{weather.temp}°</span>
+        <span className="truncate">{weather.label}{weather.place ? ` · ${weather.place}` : ''}</span>
+      </motion.div>
+    );
+  }
   return (
     <motion.div
       initial={{ opacity: 0, y: -6 }}
