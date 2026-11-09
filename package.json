@@ -22,7 +22,7 @@
     "typecheck": "tsc -p server/tsconfig.json --noEmit && tsc -p server/test/tsconfig.json --noEmit && tsc -p web/tsconfig.json --noEmit",
     "demo": "node --use-system-ca server/dist/demo.js",
     "timing": "node server/dist/timing.js",
-    "test": "node --import tsx --test --test-reporter=spec --test-concurrency=1 \"server/test/**/*.test.ts\""
+    "test": "node --import tsx --test --test-reporter=spec --test-concurrency=1 \"server/test/**/*.test.ts\" \"web/test/**/*.test.ts\""
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",

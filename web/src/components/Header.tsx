@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { BookOpen, Brain, Headphones, History, Mail, Search, LayoutDashboard, MoonStar, Sunrise, MessageCircle, Play, RefreshCw, Settings2, Sparkles } from 'lucide-react';
-import { useState } from 'react';
+import type { ReactNode } from 'react';
 import type { Status, Weather } from '../lib/api';
 import { WeatherChip } from './WeatherChip';
 import { useNow } from '../lib/hooks';
@@ -25,10 +25,12 @@ interface Props {
   onSettings: () => void;
   onSearch: () => void;
   onCompose: () => void;
+  /** Gelen kutusu düğmesi (🔔) */
+  inbox?: ReactNode;
 }
 
 const TABS: { id: View; label: string; icon: typeof LayoutDashboard }[] = [
-  { id: 'briefing', label: 'Brifing', icon: Sunrise },
+  { id: 'briefing', label: 'Bugün', icon: Sunrise },
   { id: 'board', label: 'Pano', icon: LayoutDashboard },
   { id: 'wiki', label: 'Wiki', icon: BookOpen },
   { id: 'meetings', label: 'Toplantılar', icon: Headphones },
@@ -36,7 +38,7 @@ const TABS: { id: View; label: string; icon: typeof LayoutDashboard }[] = [
   { id: 'history', label: 'Geçmiş', icon: History },
 ];
 
-export function Header({ phase, status, view, onView, onRun, onChat, onReplayIntro, showSun, weather, onEndDay, onSettings, onSearch, onCompose }: Props) {
+export function Header({ phase, status, view, onView, onRun, onChat, onReplayIntro, showSun, weather, onEndDay, onSettings, onSearch, onCompose, inbox }: Props) {
   const now = useNow(1000);
   const running = status?.run.running;
   const five = status?.usage?.fiveHour;
@@ -103,6 +105,8 @@ export function Header({ phase, status, view, onView, onRun, onChat, onReplayInt
           </div>
           <WeatherChip weather={weather} compact />
         </div>
+
+        {inbox}
 
         <Button variant="ghost" size="sm" onClick={onSearch} title="Ara (Ctrl+K): wiki, kart, mail, Teams, hafıza" className="h-9 w-9 !px-0">
           <Search size={16} />
