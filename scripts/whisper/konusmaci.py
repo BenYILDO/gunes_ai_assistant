@@ -3,6 +3,7 @@
 Profil tabanlı konuşmacı tanıma (sherpa-onnx C API üzerinden, yalnızca standart kütüphane, pip gerekmez).
 Eğitimsiz kümeleme Cemil/Yıldıray'ı ayıramadı; kişi başına ses profili (embedding merkezi) ile sınıflama ayırıyor.
 
+  gomme    Verilen aralıkların konuşmacı vektörlerini JSON olarak yazar (Güneş sunucusu çağırır)
   sina     Tek kayıt, Teams transkriptiyle: zamana göre iki yarı, her yarı diğer yarının profiliyle etiketlenir
            (aynı toplantı içi üst sınır; farklı toplantıya genelleme AYRICA doğrulanmalı). Çıktı: etiketli vtt ("[k] metin")
            -> ayrim_olc.py ile ölçülür.
@@ -145,18 +146,33 @@ def etiketle_ve_yaz(cuelar, profiller, esik, yol, sayisal):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("komut", choices=["sina", "profil", "etiketle"])
-    ap.add_argument("--wav", required=True); ap.add_argument("--vtt", required=True)
+    ap.add_argument("komut", choices=["sina", "profil", "etiketle", "degerlendir", "gomme"])
+    ap.add_argument("--wav", required=True); ap.add_argument("--vtt")
+    ap.add_argument("--araliklar", help="gomme: [[b, e], ...] JSON dosyası (sn)")
     ap.add_argument("--model", required=True); ap.add_argument("--dll", required=True)
     ap.add_argument("--ref", help="Teams docx (sina, profil)")
     ap.add_argument("--profil", help="profil.json (profil: yazılır, etiketle: okunur)")
     ap.add_argument("--cikti", help="etiketli vtt (sina, etiketle)")
     ap.add_argument("--min", type=float, default=1.5, help="profil/embedding için en kısa satır (sn)")
-    ap.add_argument("--esik", type=float, default=0.35, help="bu benzerliğin altı '?' (bilinmeyen)")
+    ap.add_argument("--esik", type=float, default=0.40, help="bu benzerliğin altı '?' (bilinmeyen)")
     ap.add_argument("--thread", type=int, default=4)
     a = ap.parse_args()
 
     cik = Cikarici(a.model, a.dll, a.wav, a.thread)
+
+    if a.komut == "gomme":
+        # Güneş sunucusu için: verilen zaman aralıklarının konuşmacı vektörleri (kısa/geçersiz aralık = null)
+        araliklar = json.loads(Path(a.araliklar).read_text(encoding="utf-8"))
+        cikti = []
+        for b, e in araliklar:
+            v = cik.embed(float(b), float(e))
+            cikti.append([round(x, 5) for x in v] if v else None)
+        Path(a.cikti).write_text(json.dumps({"boyut": cik.dim, "vektorler": cikti}), encoding="utf-8")
+        print(f"{sum(1 for v in cikti if v)}/{len(cikti)} vektör -> {a.cikti}")
+        return
+
+    if not a.vtt:
+        sys.exit("--vtt gerekli")
     cues = wer.vtt_oku(a.vtt)
 
     if a.komut == "etiketle":
@@ -173,6 +189,35 @@ def main():
     cu = etiketli_cuelar(cik, satirlar, cues, a.min if a.komut == "profil" else 0.8)
     et = [c for c in cu if c[3] and c[4] and c[1] - c[0] >= a.min]
     print(f"{len(et)} Teams ile eşleşen etiketli satır: {dict(Counter(c[3] for c in et))}")
+
+    if a.komut == "degerlendir":
+        # Başka toplantıdan kurulmuş profil, bu toplantının Teams etiketli satırlarında: tanınan/reddedilen
+        pr = json.loads(Path(a.profil).read_text(encoding="utf-8"))
+        profiller = pr["profiller"]
+        if pr.get("boyut") != cik.dim:
+            sys.exit("profil başka bir embedding modeliyle kurulmuş")
+        bilinen = {k.split()[0] for k in profiller}
+        print(f"profildeki kişiler: {sorted(bilinen)}")
+        enk = {}
+        for c in et:
+            skor = {k: cos(c[4], p) for k, p in profiller.items()}
+            enk.setdefault(c[3], []).append((max(skor.values()), max(skor, key=skor.get)))
+        print("Teams konuşmacısı -> en yakın profilin ortalama benzerliği (min..maks) ve en sık tahmin:")
+        for k, v in sorted(enk.items(), key=lambda x: -len(x[1])):
+            sk = [s for s, _ in v]
+            print(f"   {k:10s} {len(v):3d} satır  ort {sum(sk) / len(sk):.2f} ({min(sk):.2f}..{max(sk):.2f})  tahmin {dict(Counter(t for _, t in v))}")
+        print("eşik taraması (bilinen kişi: doğru tanınan %, bilinmeyen: '?' olarak reddedilen %):")
+        for esik in (0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6):
+            kd = kt = bd = bt = 0
+            for ad, v in enk.items():
+                for s, t in v:
+                    tah = t if s >= esik else "?"
+                    if ad in bilinen:
+                        kt += 1; kd += tah == ad
+                    else:
+                        bt += 1; bd += tah == "?"
+            print(f"   eşik {esik:.2f}: bilinen %{100 * kd / max(1, kt):5.1f} ({kd}/{kt})   bilinmeyen reddi %{100 * bd / max(1, bt):5.1f} ({bd}/{bt})")
+        return
 
     if a.komut == "profil":
         gruplar = defaultdict(list)

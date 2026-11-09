@@ -11,6 +11,9 @@ import type {
   Memory,
   PendingAction,
   ThreadLink,
+  Meeting,
+  NewMeeting,
+  VoiceProfile,
   WikiPage,
   MemoryKind,
   NewCard,
@@ -327,5 +330,32 @@ export class SupabaseStore implements Store {
   }
   async upsertThreadLink(l: Omit<ThreadLink, 'created_at'>) {
     must(await this.db.from('thread_links').upsert(l, { onConflict: 'thread_id' }), 'thread link upsert');
+  }
+
+  // ---------- Ses profilleri (biyometrik) ve toplantılar (migration 0006)
+  async listVoiceProfiles() {
+    return must(await this.db.from('voice_profiles').select('*').order('name'), 'voice profiles') as VoiceProfile[];
+  }
+  async upsertVoiceProfile(p: Pick<VoiceProfile, 'name' | 'embedding' | 'model' | 'samples' | 'source'>) {
+    return must(await this.db.from('voice_profiles').upsert(p, { onConflict: 'name' }).select().single(), 'voice profile upsert') as VoiceProfile;
+  }
+  async deleteVoiceProfile(id: string) {
+    must(await this.db.from('voice_profiles').delete().eq('id', id), 'voice profile delete');
+  }
+
+  async listMeetings(limit = 100) {
+    return must(await this.db.from('meetings').select('*').order('created_at', { ascending: false }).limit(limit), 'meetings') as Meeting[];
+  }
+  async getMeeting(id: string) {
+    return must(await this.db.from('meetings').select('*').eq('id', id).maybeSingle(), 'meeting') as Meeting | null;
+  }
+  async createMeeting(m: NewMeeting) {
+    return must(await this.db.from('meetings').insert(m).select().single(), 'meeting create') as Meeting;
+  }
+  async updateMeeting(id: string, patch: Partial<Meeting>) {
+    return must(await this.db.from('meetings').update(patch).eq('id', id).select().single(), 'meeting update') as Meeting;
+  }
+  async deleteMeeting(id: string) {
+    must(await this.db.from('meetings').delete().eq('id', id), 'meeting delete');
   }
 }

@@ -9,6 +9,7 @@ import { config, DATA_DIR, hasSupabase, M365_FORBIDDEN_TOOLS, ROOT } from './con
 import { configProblems, runProblems } from './health.js';
 import { runClaude } from './claude/runner.js';
 import { getStore } from './store/index.js';
+import { meetingTools } from './meetings/tools.js';
 
 const okMark = (s: string) => console.log(`  ✅ ${s}`);
 const warn = (s: string) => console.log(`  ⚠️  ${s}`);
@@ -52,6 +53,10 @@ if (hasSupabase) {
         // 0005: takvim bitiş saati (odak planı) — yoksa Güneş yine çalışır, süreyi 60 dk varsayar
         const ends = await sb.from('events').select('ends_at').limit(1);
         if (ends.error) warn("Supabase: 'events.ends_at' yok → odak planı toplantı sürelerini 60 dk varsayar. İsterseniz supabase/migrations/0005_event_end.sql dosyasını SQL Editor'de çalıştırın");
+        // 0006: toplantılar ve ses profilleri (yoksa yalnızca Toplantılar paneli çalışmaz)
+        const mt = await sb.from('meetings').select('id').limit(1);
+        const vp = await sb.from('voice_profiles').select('id').limit(1);
+        if (mt.error || vp.error) warn("Supabase: 'meetings'/'voice_profiles' yok → Toplantılar paneli çalışmaz. İsterseniz supabase/migrations/0006_meetings_voices.sql dosyasını SQL Editor'de çalıştırın (ses profilleri biyometrik veridir)");
       } catch {
         bad("Supabase: wiki tabloları yok → supabase/migrations/0003_attribution_wiki.sql dosyasını SQL Editor'de çalıştırın");
         problems++;
@@ -158,6 +163,14 @@ if (process.argv.includes('--live')) {
     } else okMark(`Microsoft 365 connector: ${server}`);
   }
   res.isError ? (bad(`Claude cevabı: ${res.text.slice(0, 300)}`), problems++) : okMark(`Claude cevabı: ${res.text.trim().slice(0, 200)}`);
+}
+
+// Toplantılar (yerel transkript + konuşmacı tanıma): isteğe bağlı, eksikse yalnızca uyarı
+{
+  const mt = meetingTools();
+  mt.missing.length
+    ? warn(`Toplantılar (yerel transkript) için eksik: ${mt.missing.join(', ')} → .env'de GUNES_WHISPER_DIR'i gösterin (bkz. scripts/whisper/RAPOR.md)`)
+    : okMark('Toplantılar: whisper.cpp, ffmpeg, sherpa-onnx, modeller ve Python hazır');
 }
 
 console.log(problems ? `\n${problems} sorun bulundu.\n` : '\nHer şey hazır görünüyor. ☀️\n');

@@ -7,6 +7,7 @@ import { ensureSoul } from './agents/soul.js';
 import { hostGuard, originGuard } from './security.js';
 import { startScheduler } from './scheduler.js';
 import { getStore } from './store/index.js';
+import { recoverStaleMeetings } from './meetings/pipeline.js';
 
 const app = express();
 // DNS rebinding + CSRF koruması (bkz. security.ts)
@@ -31,6 +32,7 @@ try {
   // Önceki oturumda sunucu kapanırken süren çalışmalar "çalışıyor" olarak takılı kalmasın
   const stale = await store.closeStaleRuns('Sunucu kapandığı için yarıda kaldı');
   if (stale) console.log(`[güneş] ${stale} yarıda kalmış çalışma kapatıldı.`);
+  await recoverStaleMeetings();
 } catch (e) {
   // Veritabanına ulaşılamasa bile arayüz açılsın; hata loglansın ve doctor ile incelensin.
   console.error('[güneş] Veri deposuna bağlanılamadı:', (e as Error).message, '→ npm run doctor');

@@ -13,6 +13,7 @@ import { getWeather, setLocation } from './weather.js';
 import { buildFocusPlan, dayKey } from './focus.js';
 import { generateDraft, TONES, type Tone } from './draft.js';
 import { composeMail, composeState } from './compose.js';
+import { meetingsRouter, voicesRouter } from './meetings/api.js';
 import { briefingToMarkdown, reportFilename } from './report.js';
 import { RETRYABLE, runProblems } from './health.js';
 import { searchKnowledge, type SearchType } from './search.js';
@@ -568,6 +569,10 @@ export function apiRouter() {
     }),
   );
   r.post('/chat', (req, res, next) => chatHandler(req, res).catch(next));
+
+  // ---------- Toplantılar (kayıt → yerel transkript → konuşmacı tanıma → wiki) ve ses profilleri
+  r.use('/meetings', meetingsRouter());
+  r.use('/voices', voicesRouter());
 
   r.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
     console.error('[güneş] API hatası:', err);

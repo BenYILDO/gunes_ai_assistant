@@ -76,6 +76,25 @@ export const config = {
   /** Ücretsiz kota 500 bin; güvenlik payıyla bu sınırda tarayıcı sesine dönülür */
   ttsMonthlyLimit: Number(env('GUNES_TTS_MONTHLY_LIMIT', '450000')),
 
+  /**
+   * Toplantı kaydı → yerel transkript + konuşmacı tanıma (bkz. server/src/meetings/, scripts/whisper/RAPOR.md).
+   * Her şey bu bilgisayarda çalışır: whisper.cpp, ffmpeg, sherpa-onnx (embedding) ve Python (yalnızca standart kütüphane).
+   */
+  meetings: {
+    /** whisper-cli.exe, ffmpeg.exe, sherpa-onnx-c-api.dll ve model dosyalarının (alt klasörler dahil) bulunduğu kök */
+    toolsDir: env('GUNES_WHISPER_DIR', join(process.env.USERPROFILE ?? process.env.HOME ?? '.', 'whisper-cpp')),
+    whisperModel: env('GUNES_WHISPER_MODEL', 'ggml-large-v3-turbo-q5_0.bin'),
+    vadModel: env('GUNES_WHISPER_VAD', 'ggml-silero-v6.2.0.bin'),
+    /** Konuşmacı vektörü modeli (TitaNet small: ölçümlerde en iyi) */
+    embeddingModel: env('GUNES_EMBEDDING_MODEL', 'nemo_en_titanet_small.onnx'),
+    python: env('GUNES_PYTHON', 'python'),
+    threads: Number(env('GUNES_WHISPER_THREADS', '8')),
+    /** Bu benzerliğin altındaki ses "tanınmadı" sayılır (iki toplantıda ölçüldü: 0,40-0,45 en dengeli) */
+    voiceThreshold: Number(env('GUNES_VOICE_THRESHOLD', '0.40')),
+    /** Panelde "klasörden seç" için taranan klasör (ör. OneDrive Toplantılar); boşsa kapalı */
+    recordingsDir: env('GUNES_RECORDINGS_DIR'),
+  },
+
   vipPeople: list('GUNES_VIP_PEOPLE'),
   ignoreSenders: list('GUNES_IGNORE', 'noreply,no-reply,newsletter,bulten,notification,bildirim'),
 };

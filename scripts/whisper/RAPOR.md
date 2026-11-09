@@ -116,7 +116,27 @@ Aynı embedding'ler Teams etiketli satırlardan kişi profili (merkez) kurulunca
 | profil, wespeaker (aynı satırlar, ön sınama) | %94,0 | | |
 
 Kişi ayrımı: Birsen %94,3 · Cemil %96,5 · Yıldıray %97,9. Embedding çıkarımı yalnızca sherpa C API + standart `ctypes` (pip gerekmez).
-**Sınır:** profil ve test aynı toplantıdan (aynı kanal/oturum). Farklı bir toplantıya genelleme bu kayıtla ölçülemez; yeni toplantıda doğrulanmalı.
+**Sınır (ilk kayıt):** profil ve test aynı toplantıdan. Farklı toplantıya genelleme aşağıdaki ikinci kayıtla sınandı.
+
+### İkinci toplantı (farklı katılımcılar): transkript ve profil genellemesi
+Kayıt: 30,6 dk, 6 konuşmacı (yalnızca Yıldıray birinci toplantıyla ortak), Teams transkripti referans.
+
+| Ölçüm | Değer |
+|---|---|
+| Önerilen ayar (turbo-q5 + VAD + greedy) | WER **%24,2** (S=456 D=338 I=66 / 3561 kelime), **1,2× gerçek zaman**, tepe RAM 1,1 GB |
+| Rakam hatası | **34/80** (birinci kayıtta 9/13): tutar, tarih, numara güvenilmez |
+| Konuşmacı bazında hata | Özer %18,6 · Yıldıray %25,8 · Necmi %26,3 · Şeref %28,6 · Uğur %37,4 · Kerem %43,6 |
+
+**Profil genellemesi** (birinci toplantıdan kurulan TitaNet small profili, ikinci toplantıda Teams etiketli 247 satır):
+
+| Konuşmacı | Satır | Profile ortalama benzerlik | Sonuç |
+|---|---|---|---|
+| Yıldıray (profilde var) | 40 | 0,72 (0,48..0,82) | **40/40 doğru** |
+| Özer, Kerem, Necmi, Şeref, Uğur (profilde yok) | 207 | 0,23-0,46 | eşik 0,40'ta %94,7 reddedildi (`?`), 0,45'te %97,1 |
+
+Eşik 0,40-0,45: bilinen kişi %100 tanındı, bilinmeyenlerin %95-97'si reddedildi; 0,50 üstünde bilinen kişi kaybolmaya başlıyor (%97,5). Varsayılan 0,40.
+Aynı toplantıda 6 kişilik çapraz sınama: %94,3 (Özer 145/146, Kerem 33/34, Yıldıray 40/40, Necmi 15/15; Şeref 0/7 ve Uğur 0/5: profil için çok az konuşma, zaman bölmesinde örnek kalmıyor).
+**Sınırlar:** profilli tek kişi (Yıldıray) farklı toplantıda sınandı; iki kayıt da Teams karışık mono. Az örnekli kişilerde (5-7 satır) tanıma başarısız oldu; profil için gereken en az konuşma miktarı ölçülmedi. Ses profili biyometriktir.
 Profiller ses biyometrisidir (kişisel veri): `sonuc/` dışına koymayın, git'e eklemeyin.
 
 ## Betikler

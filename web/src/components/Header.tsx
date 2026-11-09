@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { BookOpen, Brain, History, Mail, Search, LayoutDashboard, MoonStar, Sunrise, MessageCircle, Play, RefreshCw, Settings2, Sparkles } from 'lucide-react';
+import { BookOpen, Brain, Headphones, History, Mail, Search, LayoutDashboard, MoonStar, Sunrise, MessageCircle, Play, RefreshCw, Settings2, Sparkles } from 'lucide-react';
 import { useState } from 'react';
 import type { Status, Weather } from '../lib/api';
 import { WeatherChip } from './WeatherChip';
@@ -9,7 +9,7 @@ import { SunCore } from './SunCore';
 import { Button } from './ui';
 import { MicButton } from './MicButton';
 
-export type View = 'briefing' | 'board' | 'wiki' | 'memory' | 'history';
+export type View = 'briefing' | 'board' | 'wiki' | 'meetings' | 'memory' | 'history';
 
 interface Props {
   phase: Phase;
@@ -31,6 +31,7 @@ const TABS: { id: View; label: string; icon: typeof LayoutDashboard }[] = [
   { id: 'briefing', label: 'Brifing', icon: Sunrise },
   { id: 'board', label: 'Pano', icon: LayoutDashboard },
   { id: 'wiki', label: 'Wiki', icon: BookOpen },
+  { id: 'meetings', label: 'Toplantılar', icon: Headphones },
   { id: 'memory', label: 'Hafıza', icon: Brain },
   { id: 'history', label: 'Geçmiş', icon: History },
 ];

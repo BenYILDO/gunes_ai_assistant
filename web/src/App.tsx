@@ -27,6 +27,8 @@ import { getSettings } from './lib/settings';
 import { SettingsPanel } from './components/SettingsPanel';
 import { SearchPalette } from './components/SearchPalette';
 import { ComposeModal } from './components/ComposeModal';
+import { MeetingsView } from './components/MeetingsView';
+import { LivePill } from './components/LivePill';
 import { ProblemBanner } from './components/ProblemBanner';
 import { isEcho, parseIntent, stripWake } from './lib/voiceCommands';
 import { NudgePopup } from './components/NudgePopup';
@@ -574,6 +576,17 @@ export default function App() {
                 <WikiView jumpTo={wikiJump} pages={wiki.data ?? []} onOpenCard={setOpenCardId} onBuild={() => void run('wiki')} building={running === 'wiki'} onSelect={(p) => setChatRef({ kind: 'wiki', id: p.slug, title: p.title })} />
               </motion.div>
             )}
+            {view === 'meetings' && (
+              <motion.div key="meetings" className="h-full" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.15 } }}>
+                <MeetingsView
+                  projects={wiki.data ?? []}
+                  onOpenWiki={(slug) => {
+                    setView('wiki');
+                    setWikiJump((j) => ({ slug, n: (j?.n ?? 0) + 1 }));
+                  }}
+                />
+              </motion.div>
+            )}
             {view === 'memory' && (
               <motion.div key="memory" className="h-full" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.15 } }}>
                 <MemoryView memories={memory.data?.memories ?? []} journal={memory.data?.journal ?? []} reflection={briefing.data?.reflection ?? null} onChange={() => void memory.refresh()} />
@@ -609,6 +622,7 @@ export default function App() {
       </AnimatePresence>
 
       <ComposeModal open={composeOpen} onClose={() => setComposeOpen(false)} />
+      <LivePill onOpen={() => setView('meetings')} />
 
       <SearchPalette
         open={searchOpen}

@@ -169,6 +169,43 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 
 const json = (method: string, body?: unknown): RequestInit => ({ method, body: body ? JSON.stringify(body) : undefined });
 
+// ---------- Toplantılar (kayıt → yerel transkript → konuşmacı tanıma → wiki)
+export interface MeetingSpeaker {
+  id: string;
+  name: string | null;
+  kind: 'known' | 'unknown';
+  cues: number;
+  seconds: number;
+  samples: { b: number; e: number }[];
+}
+export interface MeetingCue { b: number; e: number; text: string; speaker: string | null; score: number | null; cluster: string | null }
+export type MeetingStatus = 'recording' | 'queued' | 'processing' | 'review' | 'done' | 'error';
+export interface MeetingItem {
+  id: string;
+  title: string;
+  source: 'upload' | 'folder' | 'live';
+  status: MeetingStatus;
+  step: string;
+  started_at: string | null;
+  duration_sec: number | null;
+  event_external_id: string | null;
+  attendees: string[];
+  project_slug: string | null;
+  wiki_slug: string | null;
+  speakers: MeetingSpeaker[];
+  summary: string | null;
+  error: string | null;
+  created_at: string;
+  /** Yalnızca ayrıntıda */
+  transcript?: MeetingCue[];
+  /** Yalnızca listede: satır sayısı */
+  cues?: number;
+}
+export interface MeetingTools { ok: boolean; missing: string[]; recordingsDir: string | null; threshold: number; storeMode: 'supabase' | 'local' }
+export interface CalendarMeeting { external_id: string; subject: string; occurred_at: string; ends_at: string | null; link: string | null; summary: string }
+export interface FolderFile { path: string; name: string; size: number; mtime: string }
+export interface VoiceProfileItem { id: string; name: string; samples: number; source: 'teams' | 'manual' | 'live'; model: string; updated_at: string }
+
 export interface FocusPlan {
   day: string;
   free_minutes: number;
@@ -196,6 +233,47 @@ export const api = {
       json('POST', { request, tone, note }),
     ),
   composeProgress: () => req<{ stage: 'idle' | 'plan' | 'research' | 'write'; questions: number; elapsed: number }>('/draft/compose/progress'),
+  meetings: () => req<MeetingItem[]>('/meetings'),
+  meeting: (id: string) => req<MeetingItem>(`/meetings/${id}`),
+  meetingTools: () => req<MeetingTools>('/meetings/tools'),
+  meetingCalendar: () => req<CalendarMeeting[]>('/meetings/calendar'),
+  meetingFolder: () => req<{ enabled: boolean; dir?: string; files: FolderFile[] }>('/meetings/folder'),
+  meetingFromFolder: (path: string, extra: { title?: string; event?: string; project?: string } = {}) => req<MeetingItem>('/meetings/from-folder', json('POST', { path, ...extra })),
+  meetingLive: (extra: { title?: string; event?: string; project?: string } = {}) => req<MeetingItem>('/meetings/live', json('POST', extra)),
+  meetingFinish: (id: string) => req<MeetingItem>(`/meetings/${id}/finish`, json('POST', {})),
+  meetingReprocess: (id: string) => req<{ ok: boolean }>(`/meetings/${id}/reprocess`, json('POST', {})),
+  meetingCancel: (id: string) => req<{ ok: boolean }>(`/meetings/${id}/cancel`, json('POST', {})),
+  meetingPatch: (id: string, patch: { title?: string; projectSlug?: string | null; attendees?: string[] }) => req<MeetingItem>(`/meetings/${id}`, json('PATCH', patch)),
+  meetingName: (id: string, speakerId: string, name: string) => req<MeetingItem>(`/meetings/${id}/name`, json('POST', { speakerId, name })),
+  meetingRelabel: (id: string, from: string, to: string) => req<MeetingItem>(`/meetings/${id}/relabel`, json('POST', { from, to })),
+  meetingFinalize: (id: string, projectSlug?: string | null) => req<MeetingItem>(`/meetings/${id}/finalize`, json('POST', projectSlug === undefined ? {} : { projectSlug })),
+  meetingDelete: (id: string) => req<{ ok: boolean }>(`/meetings/${id}`, json('DELETE')),
+  meetingClipUrl: (id: string, b: number, e: number) => `/api/meetings/${id}/clip?b=${b.toFixed(2)}&e=${e.toFixed(2)}`,
+  meetingTranscriptUrl: (id: string) => `/api/meetings/${id}/transcript.md`,
+  /** Canlı yakalama: ses parçasını yerel sunucuya gönderir (sıralı çağrılmalı) */
+  meetingChunk: async (id: string, blob: Blob) => {
+    const res = await fetch(`/api/meetings/${id}/chunk`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: blob });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `HTTP ${res.status}`);
+  },
+  /** Dosya yükleme (ilerleme için XHR); dosya yalnızca yerel sunucuya gider */
+  meetingUpload: (file: File, meta: { title?: string; event?: string; project?: string }, onProgress?: (pct: number) => void) =>
+    new Promise<MeetingItem>((resolve, reject) => {
+      const q = new URLSearchParams({ name: file.name, ...(meta.title ? { title: meta.title } : {}), ...(meta.event ? { event: meta.event } : {}), ...(meta.project ? { project: meta.project } : {}) });
+      const x = new XMLHttpRequest();
+      x.open('POST', `/api/meetings/upload?${q}`);
+      x.setRequestHeader('Content-Type', 'application/octet-stream');
+      x.upload.onprogress = (e) => e.lengthComputable && onProgress?.(Math.round((e.loaded / e.total) * 100));
+      x.onload = () => {
+        let body: any = {};
+        try { body = JSON.parse(x.responseText); } catch { /* boş gövde */ }
+        if (x.status >= 200 && x.status < 300) resolve(body as MeetingItem);
+        else reject(new Error(body.error ?? `HTTP ${x.status}`));
+      };
+      x.onerror = () => reject(new Error('Yükleme başarısız (sunucuya ulaşılamadı).'));
+      x.send(file);
+    }),
+  voices: () => req<VoiceProfileItem[]>('/voices'),
+  voiceDelete: (id: string) => req<{ ok: boolean }>(`/voices/${id}`, json('DELETE')),
   focus: (day: 'today' | 'tomorrow') => req<FocusPlan>(`/focus?day=${day}`),
   search: (q: string) => req<SearchHit[]>(`/search?q=${encodeURIComponent(q)}`),
   status: () => req<Status>('/status'),

@@ -12,6 +12,9 @@ import type {
   Memory,
   PendingAction,
   ThreadLink,
+  Meeting,
+  NewMeeting,
+  VoiceProfile,
   WikiPage,
   MemoryKind,
   NewCard,
@@ -37,6 +40,8 @@ interface Db {
   chat_messages: ChatMessage[];
   wiki_pages: WikiPage[];
   thread_links: ThreadLink[];
+  voice_profiles: VoiceProfile[];
+  meetings: Meeting[];
 }
 
 const empty = (): Db => ({
@@ -55,6 +60,8 @@ const empty = (): Db => ({
   chat_messages: [],
   wiki_pages: [],
   thread_links: [],
+  voice_profiles: [],
+  meetings: [],
 });
 
 const now = () => new Date().toISOString();
@@ -431,6 +438,58 @@ export class LocalStore implements Store {
       const x = db.thread_links.find((t) => t.thread_id === l.thread_id);
       if (x) Object.assign(x, l);
       else db.thread_links.push({ ...l, created_at: now() });
+    });
+  }
+
+  // ---------- Ses profilleri (biyometrik) ve toplantılar
+  async listVoiceProfiles() {
+    return [...this.read().voice_profiles].sort((a, b) => a.name.localeCompare(b.name, 'tr'));
+  }
+  async upsertVoiceProfile(p: Pick<VoiceProfile, 'name' | 'embedding' | 'model' | 'samples' | 'source'>) {
+    return this.tx((db) => {
+      let x = db.voice_profiles.find((v) => v.name === p.name);
+      if (x) Object.assign(x, p, { updated_at: now() });
+      else {
+        x = { id: randomUUID(), created_at: now(), updated_at: now(), ...p };
+        db.voice_profiles.push(x);
+      }
+      return x;
+    });
+  }
+  async deleteVoiceProfile(id: string) {
+    this.tx((db) => {
+      db.voice_profiles = db.voice_profiles.filter((v) => v.id !== id);
+    });
+  }
+
+  async listMeetings(limit = 100) {
+    return this.read().meetings.sort(byDesc<Meeting>('created_at')).slice(0, limit);
+  }
+  async getMeeting(id: string) {
+    return this.read().meetings.find((m) => m.id === id) ?? null;
+  }
+  async createMeeting(m: NewMeeting) {
+    return this.tx((db) => {
+      const x: Meeting = {
+        source: 'upload', status: 'queued', step: '', started_at: null, duration_sec: null, event_external_id: null, attendees: [], project_slug: null,
+        wiki_slug: null, audio_file: null, transcript: [], speakers: [], summary: null, error: null,
+        ...m, id: randomUUID(), created_at: now(), updated_at: now(),
+      };
+      db.meetings.push(x);
+      return x;
+    });
+  }
+  async updateMeeting(id: string, patch: Partial<Meeting>) {
+    return this.tx((db) => {
+      const x = db.meetings.find((m) => m.id === id);
+      if (!x) throw new Error('Toplantı bulunamadı');
+      Object.assign(x, patch, { updated_at: now() });
+      return x;
+    });
+  }
+  async deleteMeeting(id: string) {
+    this.tx((db) => {
+      db.meetings = db.meetings.filter((m) => m.id !== id);
     });
   }
 }
