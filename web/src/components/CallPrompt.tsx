@@ -21,7 +21,8 @@ export function CallPrompt({ phase, onOpenMeetings }: { phase: Phase; onOpenMeet
   const [busy, setBusy] = useState(false);
   const notified = useRef<string | null>(null);
 
-  const show = Boolean(call?.prompt) && !live.active;
+  // Windows popup'ı açıkken (Güneş penceresi arkada olsa da görünür) burada ikinci bir soru gösterme
+  const show = Boolean(call?.prompt) && !live.active && !call?.nativePopup;
   const title = call?.event ? call.event.subject : 'Plansız arama';
 
   // Pencere arka plandaysa sistem bildirimi
@@ -98,6 +99,7 @@ export function CallPrompt({ phase, onOpenMeetings }: { phase: Phase; onOpenMeet
               <p className="mt-1 text-[11px] leading-relaxed text-ink-faint">
                 "Katıl" derseniz sesi (mikrofonunuz + karşı taraf) dinleyip yazıya çeviririm; ekran paylaşımı ya da izin gerekmez, arama bitince kendiliğinden biterim.{call?.screenshot ? " Arayanı görmek için arama penceresinin ekran görüntüsünü alıp Claude'a okuturum (görüntü saklanmaz, hemen silinir)." : ''} Arama dışındaki kişilerin bilgisi/onayı için kurum politikanıza uyun. Ses dosyası 30 gün sonra silinir.
               </p>
+              {call?.error && <p className="mt-1 text-[11px] leading-relaxed text-danger">Dinleme başlatılamadı: {call.error}</p>}
               <div className="mt-3 flex gap-2">
                 <motion.button
                   whileTap={{ scale: 0.95 }}

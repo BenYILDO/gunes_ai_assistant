@@ -12,7 +12,9 @@ import type { EventItem } from '../store/types.js';
 import { config } from '../config.js';
 import { getStore } from '../store/index.js';
 import { run } from './tools.js';
-import { finishNative, nativeStatus } from './capture.js';
+import { finishNative, nativeAvailable, nativeStatus } from './capture.js';
+import { popupText, showCallPopup, type PopupHandle } from './callpopup.js';
+import { startLiveMeeting } from './live.js';
 import { identifyCaller, NO_IDENTITY, type Identity } from './callid.js';
 import { sameName } from './voices.js';
 
@@ -135,6 +137,10 @@ export interface CallSnapshot {
   event: { external_id: string; subject: string; occurred_at: string } | null;
   /** "Katıl" denince pencere görüntüsünden arayan okunur mu (GUNES_CALL_SCREENSHOT) */
   screenshot: boolean;
+  /** Windows popup'ı şu an açık (tarayıcı popup'ı bu sırada gizlenir) */
+  nativePopup: boolean;
+  /** Popup'tan "Katıl" denince dinleme başlatılamadıysa neden */
+  error: string | null;
   /** Arayan (ekran görüntüsünden okundu; doğrulanmalı) */
   identity: Pick<Identity, 'status' | 'callers' | 'title' | 'confidence' | 'note'>;
 }
@@ -147,6 +153,9 @@ class CallWatcher {
   private identity: Identity = NO_IDENTITY;
   private identityJob: Promise<void> | null = null;
   private attachId: string | null = null;
+  private popup: PopupHandle | null = null;
+  private popupFor: string | null = null;
+  private joinError: string | null = null;
 
   start() {
     if (this.timer || process.platform !== 'win32' || !config.meetings.callWatch) return;
@@ -169,6 +178,7 @@ class CallWatcher {
       this.data = stepCall(this.data, active ? { sid: active.sid, app: active.label } : null, Date.now());
       // Arama bitti (mikrofon kapandı): Güneş'in o arama için başlattığı yerel dinleme kendiliğinden biter ve işlenir
       if (before.id && !this.data.id) {
+        this.popup?.close();
         const st = nativeStatus();
         if (st?.fromCall && !st.stopping) void finishNative(st.meetingId).catch(() => {});
       }
@@ -176,6 +186,7 @@ class CallWatcher {
         this.event = null;
         this.identity = NO_IDENTITY;
         this.attachId = null;
+        this.joinError = null;
       }
       if (this.data.status === 'pending' && before.status !== 'pending') {
         // Güneş zaten bu toplantıyı dinliyorsa (kullanıcı elle başlattı) sorma
@@ -183,6 +194,7 @@ class CallWatcher {
         if (meetings.some((m) => m.status === 'recording')) this.data = { ...this.data, status: 'joined' };
         else this.event = matchEvent(await getStore().listEvents({ sinceDays: 2, limit: 3000 }).catch(() => []), Date.now());
       }
+      if (this.data.status === 'pending') this.maybeShowPopup();
     } catch {
       /* kayıt defteri okunamadı: sessiz geç, sonraki turda tekrar */
     } finally {
@@ -200,6 +212,8 @@ class CallWatcher {
       planned: Boolean(this.event),
       event: this.event ? { external_id: this.event.external_id, subject: this.event.subject ?? this.event.summary.slice(0, 80), occurred_at: this.event.occurred_at } : null,
       screenshot: config.meetings.callScreenshot,
+      nativePopup: this.popup !== null,
+      error: this.joinError,
       identity: { status: this.identity.status, callers: this.identity.callers, title: this.identity.title, confidence: this.identity.confidence, note: this.identity.note },
     };
   }
@@ -243,12 +257,47 @@ class CallWatcher {
     await store.updateMeeting(id, patch);
   }
 
+  /** Windows popup'ını gösterir (her arama için bir kez); karar gelince Katıl/Şimdi değil uygulanır. */
+  private maybeShowPopup() {
+    const d = this.data;
+    if (!config.meetings.callPopup || !nativeAvailable() || !d.id || d.status !== 'pending' || this.popupFor === d.id) return;
+    this.popupFor = d.id;
+    const idAtShow = d.id;
+    const text = popupText({ app: d.app, planned: Boolean(this.event), eventSubject: this.event ? (this.event.subject ?? this.event.summary) : null, screenshot: config.meetings.callScreenshot });
+    const handle = showCallPopup(text);
+    this.popup = handle;
+    void handle.result.then(async (r) => {
+      if (this.popup === handle) this.popup = null;
+      if (this.data.id !== idAtShow || this.data.status !== 'pending') return;
+      if (r === 'decline') this.decline();
+      else if (r === 'join') await this.joinNative();
+    });
+  }
+
+  /** Popup'tan "Katıl": önce arayanı oku (Teams hâlâ en üstte), sonra yerel dinlemeyi başlat. Tarayıcı gerekmez. */
+  async joinNative() {
+    this.startIdentify();
+    const d = this.data;
+    const hhmm = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', timeZone: config.timezone });
+    const title = this.event ? (this.event.subject ?? this.event.summary.slice(0, 80)) : `Plansız arama · ${d.app ?? 'arama'} · ${hhmm}`;
+    try {
+      const { meeting } = await startLiveMeeting({ title, event: this.event?.external_id ?? null, native: true, fromCall: true, requireNative: true });
+      this.joinError = null;
+      this.joined();
+      this.attach(meeting.id);
+    } catch (e) {
+      this.joinError = (e as Error).message.slice(0, 200);
+    }
+  }
+
   /** "Şimdi değil": bu arama için bir daha sorma */
   decline() {
+    this.popup?.close();
     if (this.data.id) this.data = { ...this.data, status: 'declined' };
   }
   /** Kullanıcı katıldı (dinleme başladı) */
   joined() {
+    this.popup?.close();
     if (this.data.id) this.data = { ...this.data, status: 'joined' };
   }
 }

@@ -12,7 +12,8 @@ import type { Meeting } from '../store/types.js';
 import { cancelMeeting, finalizeMeeting, MeetingError, meetingDir, nameSpeaker, processMeeting, relabelSpeaker, removeMeetingFiles, transcriptText } from './pipeline.js';
 import { meetingTools } from './tools.js';
 import { callWatcher } from './callwatch.js';
-import { abortNative, finishNative, nativeActive, nativeAvailable, nativeStatus, startNative } from './capture.js';
+import { startLiveMeeting } from './live.js';
+import { abortNative, finishNative, nativeActive, nativeAvailable, nativeStatus } from './capture.js';
 
 const wrap =
   (fn: (req: Request, res: Response) => Promise<unknown>) => (req: Request, res: Response, next: NextFunction) =>
@@ -183,31 +184,15 @@ export function meetingsRouter() {
   // Canlı yakalama: tarayıcı ses parçalarını gönderir (siz kayıt almadan Güneş sizinle dinler)
   r.post('/live', wrap(async (req, res) => {
     if (nativeStatus()) return void res.status(409).json({ error: 'Zaten bir canlı dinleme sürüyor.' });
-    const m = await store.createMeeting({
-      title: str(req.body?.title, 150) || 'Canlı toplantı',
-      source: 'live',
-      status: 'recording',
-      step: 'Dinleniyor',
-      event_external_id: str(req.body?.event, 300) || null,
-      project_slug: str(req.body?.project, 120) || null,
-      started_at: new Date().toISOString(),
+    const { meeting, native, nativeError } = await startLiveMeeting({
+      title: str(req.body?.title, 150),
+      event: str(req.body?.event, 300) || null,
+      project: str(req.body?.project, 120) || null,
+      native: req.body?.native !== false,
+      fromCall: Boolean(req.body?.fromCall),
     });
-    const dir = meetingDir(m.id);
-    mkdirSync(dir, { recursive: true });
-    // Önce yerel yakalama (ekran paylaşımı/izin gerekmez); olmazsa tarayıcı yöntemine düşülür (native:false)
-    let native = false;
-    let nativeError: string | null = null;
-    if (nativeAvailable() && req.body?.native !== false) {
-      try {
-        await startNative(m.id, { fromCall: Boolean(req.body?.fromCall) });
-        native = true;
-      } catch (e) {
-        nativeError = (e as Error).message;
-      }
-    }
-    const started = native ? m : await store.updateMeeting(m.id, { audio_file: join(dir, 'live.webm') });
-    callWatcher.attach(m.id); // az önce bir arama okunduysa arayan adı bu toplantıya işlenir
-    res.json({ ...light(started), native, nativeError });
+    callWatcher.attach(meeting.id); // az önce bir arama okunduysa arayan adı bu toplantıya işlenir
+    res.json({ ...light(meeting), native, nativeError });
   }));
 
   // Sunucudaki canlı dinleme durumu (arayüz yeniden yüklense de gerçeği gösterir)

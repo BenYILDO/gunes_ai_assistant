@@ -212,6 +212,10 @@ export interface CallSnapshot {
   planned: boolean;
   event: { external_id: string; subject: string; occurred_at: string } | null;
   screenshot: boolean;
+  /** Windows popup'ı açık: tarayıcı popup'ı gizlenir */
+  nativePopup: boolean;
+  /** Popup'tan Katıl denince dinleme başlatılamadıysa neden */
+  error: string | null;
   identity: { status: 'running' | 'ok' | 'none' | 'error'; callers: string[]; title: string | null; confidence: 'yuksek' | 'orta' | 'dusuk' | null; note: string | null };
 }
 export interface CalendarMeeting { external_id: string; subject: string; occurred_at: string; ends_at: string | null; link: string | null; summary: string }

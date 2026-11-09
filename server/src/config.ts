@@ -99,6 +99,8 @@ export const config = {
     micDevice: env('GUNES_MIC_DEVICE'),
     /** Arama algılama: Windows'un mikrofon kullanım kaydını izler; arama başlayınca Güneş "katılmamı ister misiniz?" diye sorar */
     callWatch: env('GUNES_CALL_WATCH', 'on') !== 'off',
+    /** Arama algılanınca Windows'ta kendi başına çıkan "katılmamı ister misiniz?" penceresi (Güneş penceresi kapalı/arkada olsa da görünür). off = yalnızca tarayıcı popup'ı */
+    callPopup: env('GUNES_CALL_POPUP', 'on') !== 'off',
     /** "Katıl" denince arama penceresinin görüntüsü alınıp Claude'a verilerek arayanın adı okunur (görüntü saklanmaz). off = kapalı */
     callScreenshot: env('GUNES_CALL_SCREENSHOT', 'on') !== 'off',
     /** Hangi uygulamaların mikrofon kullanımı "arama" sayılır (tarayıcılar Güneş'in kendi sesli komutuyla karışmasın diye yok) */
