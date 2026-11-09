@@ -34,6 +34,8 @@ import { ProblemBanner } from './components/ProblemBanner';
 import { isEcho, parseIntent, stripWake } from './lib/voiceCommands';
 import { NudgePopup } from './components/NudgePopup';
 import { Inbox, type InboxProposal } from './components/Inbox';
+import { PetCompanion } from './components/PetCompanion';
+import { PetButton, PetPanel } from './components/PetPanel';
 import { classifyNudge, hideUntil, inQuietHours, isHidden, loadHidden, pruneHidden, saveHidden, shouldPopup } from './lib/inbox';
 import { useSettings } from './lib/settings';
 import { Sky } from './components/Sky';
@@ -161,6 +163,29 @@ export default function App() {
   const actions = usePoll(api.actions, 20000);
   const nudges = usePoll(api.nudges, 30000);
   const meetingList = usePoll(api.meetings, 60000);
+  const pet = usePoll(api.pet, 45_000);
+  const [petPanelOpen, setPetPanelOpen] = useState(false);
+  // Günün ilk açılışında ziyaret ödülü (sunucu günde bir kez verir)
+  useEffect(() => {
+    void api.visitPet().then((p) => pet.setData(p)).catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Puan ve yeni rozet bildirimleri (kart kapatma, öneri uygulama, besleme vb. her yerden gelen değişiklikler)
+  const prevPet = useRef<typeof pet.data>(null);
+  useEffect(() => {
+    const cur = pet.data;
+    const prev = prevPet.current;
+    prevPet.current = cur;
+    if (!cur || !prev || !cur.enabled || !prev.enabled) return;
+    const got = Object.keys(cur.achievements).filter((id) => !prev.achievements[id]);
+    for (const id of got) {
+      const a = cur.catalog.achievements.find((x) => x.id === id);
+      if (a) toast(`🏅 Yeni rozet: ${a.emoji} ${a.name} (+${a.reward} puan)`);
+    }
+    const dCoins = cur.coins - prev.coins - got.reduce((t, id) => t + (cur.catalog.achievements.find((x) => x.id === id)?.reward ?? 0), 0);
+    if (dCoins > 0) toast(`🪙 +${dCoins} puan`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pet.data]);
   const callSnap = usePoll(api.callState, 5000);
   const settings = useSettings();
   const clock = useNow(30_000);
@@ -529,7 +554,9 @@ export default function App() {
           onSearch={() => setSearchOpen(true)}
           onCompose={() => setComposeOpen(true)}
           inbox={
-            <Inbox
+            <>
+              {pet.data?.enabled && <PetButton pet={pet.data} onClick={() => setPetPanelOpen(true)} />}
+              <Inbox
               nudges={nudges.data ?? []}
               approvals={actions.data?.length ?? 0}
               proposals={inboxProposals}
@@ -538,7 +565,8 @@ export default function App() {
               onSeen={seenNudge}
               onApprovals={() => setView('briefing')}
               onMeetings={() => setView('meetings')}
-            />
+              />
+            </>
           }
         />
 
@@ -694,7 +722,21 @@ export default function App() {
           else toast('Bu kaydın bağlantısı yok.', 'error');
         }}
       />
-      <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} status={status.data} onVoiceTest={() => void runVoiceTest()} onVoiceDiag={() => void runDiag()} weather={weather.data} onLocationChanged={() => {
+      {!intro && pet.data?.enabled && (
+        <PetCompanion
+          key={settings.petScale}
+          scale={settings.petScale}
+          pet={pet.data}
+          today={today.data}
+          critical={today.data?.critical.length ?? 0}
+          sleeping={quiet !== null || clock.getHours() >= 23 || clock.getHours() < 6}
+          onBoard={view === 'board'}
+          free={!openCard && !voiceSegs && !searchOpen && !settingsOpen && !composeOpen && !farewell && !chatOpen && !petPanelOpen}
+          onPet={(p) => pet.setData(p)}
+        />
+      )}
+      <PetPanel open={petPanelOpen} onClose={() => setPetPanelOpen(false)} pet={pet.data} onPet={(p) => pet.setData(p)} />
+      <SettingsPanel pet={pet.data} onTogglePet={(on) => void api.enablePet(on).then((p) => pet.setData(p)).catch(() => undefined)} onRenamePet={(n) => void api.renamePet(n).then(() => pet.refresh())} open={settingsOpen} onClose={() => setSettingsOpen(false)} status={status.data} onVoiceTest={() => void runVoiceTest()} onVoiceDiag={() => void runDiag()} weather={weather.data} onLocationChanged={() => {
         void weather.refresh();
         void today.refresh();
       }} />

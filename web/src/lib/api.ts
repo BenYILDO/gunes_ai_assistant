@@ -97,6 +97,41 @@ export interface DaySummary {
 export interface DayEndResult { steps: { key: string; ok: boolean; note?: string }[]; summary: DaySummary }
 
 export interface Nudge { id: string; title: string; message: string; created_at: string }
+export type PetSpecies = 'cat' | 'fox';
+export type PetItemId = 'bowl' | 'ball' | 'cushion' | 'house' | 'hat' | 'bow' | 'freeze';
+export interface PetItemInfo { id: PetItemId; name: string; kind: 'place' | 'wear' | 'use'; price: number; desc: string; emoji: string }
+export interface PetPlaced { itemId: PetItemId; x: number; b: number }
+export interface PetAchievementInfo { id: string; name: string; desc: string; emoji: string; reward: number }
+export interface Pet {
+  /** Özellik açık mı (varsayılan kapalı). Kapalıyken puan/ödül/mağaza çalışmaz */
+  enabled: boolean;
+  freezes: number;
+  name: string;
+  species: PetSpecies;
+  unlocked: PetSpecies[];
+  adoptedAt: string;
+  lastFed: string | null;
+  streak: number;
+  bestStreak: number;
+  totalFeeds: number;
+  coins: number;
+  lifetime: number;
+  owned: PetItemId[];
+  placed: PetPlaced[];
+  worn: PetItemId[];
+  stats: { cardsClosed: number; proposalsApplied: number; meetings: number; daysClosed: number; visitDays: number; pats: number; plays: number };
+  achievements: Record<string, string>;
+  lastVisit: string | null;
+  visitStreak: number;
+  bestVisitStreak: number;
+  today: string;
+  fedToday: boolean;
+  mood: 'happy' | 'content' | 'hungry';
+  level: { level: number; name: string; from: number; next: number | null };
+  workLeft: number;
+  catalog: { species: { id: PetSpecies; name: string; price: number }[]; items: PetItemInfo[]; achievements: PetAchievementInfo[]; workCap: number };
+}
+export type PetGain = { gained?: number; newly?: string[] };
 
 export interface Briefing { id: string; kind: 'morning' | 'tracker' | 'weekly' | 'reflection'; headline: string; content: string; stats: Record<string, number>; created_at: string }
 export interface Memory {
@@ -333,6 +368,17 @@ export const api = {
     req(`/suggestions/${id}`, json('PATCH', { status, lesson })),
   run: (kind: 'morning' | 'tracker' | 'backfill' | 'wiki' | 'weekly' | 'reflection') => req(`/run/${kind}`, json('POST')),
   nudges: () => req<Nudge[]>('/nudges'),
+  pet: () => req<Pet>('/pet'),
+  feedPet: () => req<Pet & PetGain & { fed: boolean }>('/pet/feed', json('POST', {})),
+  enablePet: (on: boolean) => req<Pet>('/pet/enable', json('POST', { on })),
+  visitPet: () => req<Pet & PetGain>('/pet/visit', json('POST', {})),
+  buyPetItem: (item: string) => req<Pet & PetGain>('/pet/buy', json('POST', { item })),
+  placePetItem: (item: string, x: number, b: number) => req<Pet>('/pet/place', json('POST', { item, x, b })),
+  unplacePetItem: (item: string) => req<Pet>('/pet/unplace', json('POST', { item })),
+  equipPetItem: (item: string, on: boolean) => req<Pet>('/pet/equip', json('POST', { item, on })),
+  choosePetSpecies: (species: string, buy = false) => req<Pet & PetGain>('/pet/species', json('POST', { species, buy })),
+  petEvent: (kind: 'pat' | 'play', count = 1) => req<Pet & PetGain>('/pet/event', json('POST', { kind, count })),
+  renamePet: (name: string) => req<Pet>('/pet/name', json('POST', { name })),
   daySummary: () => req<DaySummary>('/day/summary'),
   endDay: () => req<DayEndResult>('/day/end', json('POST')),
   closeApp: () => req('/app/close', json('POST')),

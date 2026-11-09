@@ -233,7 +233,7 @@ function DraggableCard({
       exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
       transition={{ type: 'spring', stiffness: 400, damping: 34 }}
     >
-      <div ref={setNodeRef} {...attributes} {...listeners} onClick={() => onOpen(card)} className="cursor-grab active:cursor-grabbing">
+      <div ref={setNodeRef} {...attributes} {...listeners} data-card-id={card.id} data-card-title={card.title} onClick={() => onOpen(card)} className="cursor-grab active:cursor-grabbing">
         <CardView card={card} project={project} onMove={onMove} />
       </div>
     </motion.div>

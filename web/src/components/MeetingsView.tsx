@@ -368,6 +368,9 @@ function MeetingDetail({ id, projects, retentionDays, onClose, onChanged, onOpen
   const [names, setNames] = useState<Record<string, string>>({});
   const [fix, setFix] = useState<string | null>(null);
   const [fixTo, setFixTo] = useState('');
+  // Toplantı sonrası tek ekran akışı: sesler → özet ve kararlar → öneriler → bitir
+  const [stepIdx, setStepIdx] = useState(0);
+  const [showAll, setShowAll] = useState(false);
   const alive = useRef(true);
   useEffect(() => () => void (alive.current = false), []);
 
@@ -387,6 +390,8 @@ function MeetingDetail({ id, projects, retentionDays, onClose, onChanged, onOpen
     setM(null);
     setProj('');
     setNames({});
+    setStepIdx(0);
+    setShowAll(false);
     if (id) void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
@@ -420,6 +425,239 @@ function MeetingDetail({ id, projects, retentionDays, onClose, onChanged, onOpen
     const att = m?.attendees ?? [];
     return [...att.filter((a) => !have.has(a.toLowerCase())), ...att.filter((a) => have.has(a.toLowerCase()))];
   }, [m, known]);
+
+  const unknownBlock = m && unknown.length > 0 ? (
+                  <div className="space-y-2">
+                    <div className="text-[10.5px] font-medium uppercase tracking-[0.14em] text-warn">Bu sesler kim? (dinleyip adlandırın)</div>
+                    {unknown.map((s) => (
+                      <div key={s.id} className="rounded-xl border border-line bg-white/[0.03] p-2.5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: `hsl(${hue(s.id)} 70% 60%)` }} />
+                          <span className="text-sm">{who(null, s.id)}</span>
+                          <span className="text-[11px] text-ink-faint">
+                            {s.cues} satır · {Math.max(1, Math.round(s.seconds / 60))} dk
+                          </span>
+                          {s.samples.map((x, i) => (
+                            <button key={i} onClick={() => play(api.meetingClipUrl(m.id, x.b, Math.min(x.e, x.b + 8)))} className="inline-flex items-center gap-1 rounded-md border border-line px-1.5 py-0.5 text-[11px] text-ink-dim hover:bg-white/[0.08]" title="Dinle">
+                              <Play size={10} /> {clock(x.b)}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <Select value={candidates.includes(names[s.id] ?? '') ? names[s.id]! : ''} onChange={(v) => setNames((n) => ({ ...n, [s.id]: v }))} className="max-w-[220px]">
+                            <option value="">Katılımcılardan seç…</option>
+                            {candidates.map((c) => (
+                              <option key={c} value={c}>
+                                {c}
+                              </option>
+                            ))}
+                          </Select>
+                          <input value={names[s.id] ?? ''} onChange={(e) => setNames((n) => ({ ...n, [s.id]: e.target.value }))} placeholder="ya da adı yazın" className="min-w-[140px] flex-1 rounded-lg border border-line bg-black/20 px-2.5 py-1.5 text-xs outline-none focus:border-[color:var(--accent)]/60" />
+                          <Button size="sm" variant="primary" disabled={(names[s.id] ?? '').trim().length < 2 || busy !== ''} onClick={() => void act('n' + s.id, () => api.meetingName(m.id, s.id, names[s.id]!), 'Kaydedildi: bu kişi sonraki toplantılarda tanınacak.')}>
+                            {busy === 'n' + s.id ? <Loader2 size={12} className="animate-spin" /> : null} Kaydet
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                
+  ) : null;
+  const proposalsBlock = m && (m.proposals ?? []).length > 0 ? (
+                  <div className="rounded-xl border border-[color:var(--accent)]/30 bg-white/[0.03] p-3">
+                    <div className="mb-2 flex items-center gap-2 text-[10.5px] font-medium uppercase tracking-[0.14em] text-accent">
+                      <Sparkles size={12} /> Güneş'in önerileri
+                      {(m.proposals ?? []).filter((p) => p.status === 'pending').length > 1 && (
+                        <Button size="sm" variant="primary" className="ml-auto" disabled={busy !== ''} onClick={() => void act('pall', () => api.proposalApplyAll(m.id), 'Önerilerin hepsi uygulandı.')}>
+                          {busy === 'pall' ? <Loader2 size={12} className="animate-spin" /> : null} Hepsini uygula ({(m.proposals ?? []).filter((p) => p.status === 'pending').length})
+                        </Button>
+                      )}
+                    </div>
+                    <div className="space-y-1.5">
+                      {(m.proposals ?? []).map((p) => (
+                        <div key={p.id} className="flex items-start gap-2 rounded-lg border border-line bg-black/20 p-2 text-xs">
+                          <div className="min-w-0 flex-1">
+                            <div className="text-ink">
+                              <span className="text-ink-faint">{KIND_LABEL[p.kind]}: </span>
+                              {p.title}
+                            </div>
+                            {detailOf(p) && <div className="mt-0.5 text-[11px] leading-relaxed text-ink-dim">{detailOf(p)}</div>}
+                            {p.reason && <div className="mt-0.5 text-[11px] italic text-ink-faint">{p.reason}</div>}
+                            {p.result && <div className={`mt-0.5 text-[11px] ${p.status === 'failed' ? 'text-danger' : 'text-ok'}`}>{p.result}</div>}
+                          </div>
+                          {p.status === 'pending' ? (
+                            <div className="flex shrink-0 gap-1">
+                              <Button size="sm" variant="primary" disabled={busy !== ''} onClick={() => void act('p' + p.id, () => api.proposalApply(m.id, p.id), 'Uygulandı.')}>
+                                {busy === 'p' + p.id ? <Loader2 size={12} className="animate-spin" /> : null} Uygula
+                              </Button>
+                              <Button size="sm" variant="ghost" disabled={busy !== ''} onClick={() => void act('s' + p.id, () => api.proposalSkip(m.id, p.id))}>
+                                Geç
+                              </Button>
+                            </div>
+                          ) : (
+                            <Chip className={p.status === 'applied' ? '!text-ok' : p.status === 'failed' ? '!text-danger' : ''}>{p.status === 'applied' ? 'uygulandı' : p.status === 'failed' ? 'başarısız' : 'geçildi'}</Chip>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-2 text-[11px] text-ink-faint">Hiçbiri onayınız olmadan uygulanmaz. Güneş kartı "bitti"ye taşıyamaz. Rakam, tutar ve isimleri uygulamadan önce kontrol edin; sohbette de konuşabilirsiniz.</div>
+                  </div>
+                
+  ) : null;
+
+  // ---------- toplantı sonrası sihirbaz
+  const pendingProps = (m?.proposals ?? []).filter((p) => p.status === 'pending');
+  const hasProps = (m?.proposals ?? []).length > 0;
+  const guidedOk = Boolean(m && ['review', 'done'].includes(m.status) && (unknown.length > 0 || m.analysis || hasProps));
+  const guided = guidedOk && !showAll;
+  const steps: { id: 'voices' | 'summary' | 'proposals' | 'finish'; label: string; done: boolean }[] = [
+    ...(unknown.length > 0 ? [{ id: 'voices' as const, label: 'Sesler', done: false }] : []),
+    { id: 'summary', label: 'Özet ve kararlar', done: false },
+    ...(hasProps ? [{ id: 'proposals' as const, label: 'Öneriler', done: pendingProps.length === 0 }] : []),
+    { id: 'finish', label: 'Bitir', done: Boolean(m?.wiki_slug) },
+  ];
+  const idx = Math.min(stepIdx, steps.length - 1);
+  const cur = steps[idx]!;
+  const guidedBlock =
+    m && guided ? (
+      <div className="space-y-4">
+        {/* adım çubuğu */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {steps.map((st, i) => (
+            <button
+              key={st.id}
+              onClick={() => setStepIdx(i)}
+              className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs ${i === idx ? 'border-[color:var(--accent)]/60 bg-[color:var(--accent)]/15 text-ink' : 'border-line text-ink-faint hover:text-ink-dim'}`}
+            >
+              <span className={`grid h-4 w-4 place-items-center rounded-full text-[10px] ${st.done ? 'bg-[color:var(--ok)]/25 text-ok' : 'bg-white/10'}`}>{st.done ? '✓' : i + 1}</span>
+              {st.label}
+            </button>
+          ))}
+          <button className="ml-auto text-[11px] text-ink-faint underline-offset-2 hover:underline" onClick={() => setShowAll(true)}>
+            Tüm ayrıntıları göster
+          </button>
+        </div>
+
+        {cur.id === 'voices' && (
+          <div className="space-y-2">
+            <p className="text-sm text-ink-dim">Önce kimlerin konuştuğunu belirleyelim; böylece özet ve öneriler doğru kişilere bağlanır. Sesleri dinleyip adlandırın, bilmiyorsanız bu adımı geçebilirsiniz.</p>
+            {unknownBlock}
+          </div>
+        )}
+
+        {cur.id === 'summary' && (
+          <div className="space-y-3">
+            {m.analysis ? (
+              <>
+                <p className="text-[15px] leading-relaxed">{m.analysis.ozet}</p>
+                {m.analysis.konular.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {m.analysis.konular.map((k) => (
+                      <Chip key={k}>{k}</Chip>
+                    ))}
+                  </div>
+                )}
+                {m.analysis.kararlar.length > 0 && (
+                  <div>
+                    <div className="mb-1 text-[10.5px] font-medium uppercase tracking-[0.14em] text-accent">Kararlar</div>
+                    <ul className="space-y-1 text-sm">
+                      {m.analysis.kararlar.map((k, i) => (
+                        <li key={i} className="flex gap-2">
+                          <CheckCircle2 size={14} className="mt-0.5 shrink-0 text-ok" /> <span>{k}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {m.analysis.aksiyonlar.length > 0 && (
+                  <div>
+                    <div className="mb-1 text-[10.5px] font-medium uppercase tracking-[0.14em] text-accent">Aksiyonlar</div>
+                    <ul className="space-y-1 text-sm">
+                      {m.analysis.aksiyonlar.map((a, i) => (
+                        <li key={i} className="rounded-lg border border-line bg-white/[0.03] px-3 py-1.5">
+                          <b>{a.kim}</b> · {a.ne}
+                          {a.ne_zaman && <span className="text-ink-faint"> — {a.ne_zaman}</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <p className="text-[11px] text-ink-faint">Özet otomatiktir: isim ve rakamları (tutar, tarih) kontrol edin.</p>
+              </>
+            ) : (
+              <div className="space-y-2">
+                {m.summary ? <p className="text-sm leading-relaxed text-ink-dim">{m.summary}</p> : <p className="text-sm text-ink-dim">Bu toplantı için henüz özet ve öneri yok.</p>}
+                <Button size="sm" variant="primary" disabled={busy !== '' || Boolean(m.step)} onClick={() => void act('an', () => api.meetingAnalyze(m.id), 'Özet ve öneriler hazır.')}>
+                  {busy === 'an' ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />} Özet ve öneri üret
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {cur.id === 'proposals' && (
+          <div className="space-y-2">
+            <p className="text-sm text-ink-dim">
+              {pendingProps.length > 0 ? `Güneş ${pendingProps.length} şey öneriyor. Hiçbiri onayınız olmadan uygulanmaz; her birini uygulayabilir ya da geçebilirsiniz.` : 'Tüm öneriler değerlendirildi. 👏'}
+            </p>
+            {proposalsBlock}
+          </div>
+        )}
+
+        {cur.id === 'finish' && (
+          <div className="space-y-3">
+            <div className="grid gap-2 sm:grid-cols-3">
+              <div className="rounded-xl border border-line bg-white/[0.03] px-3 py-2">
+                <div className="text-lg font-semibold tabular-nums">{(m.proposals ?? []).filter((p) => p.status === 'applied').length}</div>
+                <div className="text-[11px] text-ink-faint">uygulanan öneri</div>
+              </div>
+              <div className="rounded-xl border border-line bg-white/[0.03] px-3 py-2">
+                <div className="text-lg font-semibold tabular-nums">{pendingProps.length}</div>
+                <div className="text-[11px] text-ink-faint">bekleyen öneri</div>
+              </div>
+              <div className="rounded-xl border border-line bg-white/[0.03] px-3 py-2">
+                <div className="text-lg font-semibold">{m.wiki_slug ? 'Bağlı' : 'Bağlı değil'}</div>
+                <div className="text-[11px] text-ink-faint">wiki sayfası</div>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Select value={proj} onChange={setProj} className="max-w-[260px]">
+                <option value="">Projeye bağlama</option>
+                {projects.map((pr) => (
+                  <option key={pr.slug} value={pr.slug}>
+                    {pr.title}
+                  </option>
+                ))}
+              </Select>
+              <Button size="sm" variant={m.wiki_slug ? 'subtle' : 'primary'} disabled={busy !== '' || m.status === 'processing'} onClick={() => void act('fin', () => api.meetingFinalize(m.id, proj || null), 'Wiki sayfası oluşturuldu.')}>
+                {busy === 'fin' ? <Loader2 size={12} className="animate-spin" /> : null} {m.wiki_slug ? 'Wiki sayfasını yenile' : "Wiki'ye bağla"}
+              </Button>
+              {m.wiki_slug && (
+                <Button size="sm" onClick={() => onOpenWiki(m.wiki_slug!)}>
+                  Wiki sayfasını aç
+                </Button>
+              )}
+            </div>
+            {pendingProps.length > 0 && <p className="text-[11px] text-warn">{pendingProps.length} öneri hâlâ bekliyor; sonra Toplantılar'dan bu ekrana dönebilirsiniz.</p>}
+          </div>
+        )}
+
+        {/* ileri / geri */}
+        <div className="flex items-center justify-between border-t border-line pt-3">
+          <Button size="sm" variant="ghost" disabled={idx === 0} onClick={() => setStepIdx(idx - 1)}>
+            ← Geri
+          </Button>
+          {idx < steps.length - 1 ? (
+            <Button size="sm" variant="primary" onClick={() => setStepIdx(idx + 1)}>
+              {cur.id === 'voices' && unknown.length > 0 ? 'Şimdilik geç →' : 'İleri →'}
+            </Button>
+          ) : (
+            <Button size="sm" variant="primary" onClick={onClose}>
+              <CheckCircle2 size={13} /> Bitti
+            </Button>
+          )}
+        </div>
+      </div>
+    ) : null;
 
   return (
     <AnimatePresence>
@@ -478,42 +716,17 @@ function MeetingDetail({ id, projects, retentionDays, onClose, onChanged, onOpen
                   )}
                 </div>
 
+                {guided ? (
+                  guidedBlock
+                ) : (
+                  <>
+                    {guidedOk && (
+                      <button className="text-[11px] text-accent underline-offset-2 hover:underline" onClick={() => setShowAll(false)}>
+                        ← Adım adım görünüme dön
+                      </button>
+                    )}
                 {/* Tanınmayan sesler: tek tıkla isimlendirme */}
-                {unknown.length > 0 && (
-                  <div className="space-y-2">
-                    <div className="text-[10.5px] font-medium uppercase tracking-[0.14em] text-warn">Bu sesler kim? (dinleyip adlandırın)</div>
-                    {unknown.map((s) => (
-                      <div key={s.id} className="rounded-xl border border-line bg-white/[0.03] p-2.5">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: `hsl(${hue(s.id)} 70% 60%)` }} />
-                          <span className="text-sm">{who(null, s.id)}</span>
-                          <span className="text-[11px] text-ink-faint">
-                            {s.cues} satır · {Math.max(1, Math.round(s.seconds / 60))} dk
-                          </span>
-                          {s.samples.map((x, i) => (
-                            <button key={i} onClick={() => play(api.meetingClipUrl(m.id, x.b, Math.min(x.e, x.b + 8)))} className="inline-flex items-center gap-1 rounded-md border border-line px-1.5 py-0.5 text-[11px] text-ink-dim hover:bg-white/[0.08]" title="Dinle">
-                              <Play size={10} /> {clock(x.b)}
-                            </button>
-                          ))}
-                        </div>
-                        <div className="mt-2 flex flex-wrap items-center gap-2">
-                          <Select value={candidates.includes(names[s.id] ?? '') ? names[s.id]! : ''} onChange={(v) => setNames((n) => ({ ...n, [s.id]: v }))} className="max-w-[220px]">
-                            <option value="">Katılımcılardan seç…</option>
-                            {candidates.map((c) => (
-                              <option key={c} value={c}>
-                                {c}
-                              </option>
-                            ))}
-                          </Select>
-                          <input value={names[s.id] ?? ''} onChange={(e) => setNames((n) => ({ ...n, [s.id]: e.target.value }))} placeholder="ya da adı yazın" className="min-w-[140px] flex-1 rounded-lg border border-line bg-black/20 px-2.5 py-1.5 text-xs outline-none focus:border-[color:var(--accent)]/60" />
-                          <Button size="sm" variant="primary" disabled={(names[s.id] ?? '').trim().length < 2 || busy !== ''} onClick={() => void act('n' + s.id, () => api.meetingName(m.id, s.id, names[s.id]!), 'Kaydedildi: bu kişi sonraki toplantılarda tanınacak.')}>
-                            {busy === 'n' + s.id ? <Loader2 size={12} className="animate-spin" /> : null} Kaydet
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                {unknownBlock}
 
                 {/* Tanınan sesler */}
                 {known.length > 0 && (
@@ -552,46 +765,7 @@ function MeetingDetail({ id, projects, retentionDays, onClose, onChanged, onOpen
                 )}
 
                 {/* Güneş'in önerileri: hiçbiri onaysız uygulanmaz */}
-                {(m.proposals ?? []).length > 0 && (
-                  <div className="rounded-xl border border-[color:var(--accent)]/30 bg-white/[0.03] p-3">
-                    <div className="mb-2 flex items-center gap-2 text-[10.5px] font-medium uppercase tracking-[0.14em] text-accent">
-                      <Sparkles size={12} /> Güneş'in önerileri
-                      {(m.proposals ?? []).filter((p) => p.status === 'pending').length > 1 && (
-                        <Button size="sm" variant="primary" className="ml-auto" disabled={busy !== ''} onClick={() => void act('pall', () => api.proposalApplyAll(m.id), 'Önerilerin hepsi uygulandı.')}>
-                          {busy === 'pall' ? <Loader2 size={12} className="animate-spin" /> : null} Hepsini uygula ({(m.proposals ?? []).filter((p) => p.status === 'pending').length})
-                        </Button>
-                      )}
-                    </div>
-                    <div className="space-y-1.5">
-                      {(m.proposals ?? []).map((p) => (
-                        <div key={p.id} className="flex items-start gap-2 rounded-lg border border-line bg-black/20 p-2 text-xs">
-                          <div className="min-w-0 flex-1">
-                            <div className="text-ink">
-                              <span className="text-ink-faint">{KIND_LABEL[p.kind]}: </span>
-                              {p.title}
-                            </div>
-                            {detailOf(p) && <div className="mt-0.5 text-[11px] leading-relaxed text-ink-dim">{detailOf(p)}</div>}
-                            {p.reason && <div className="mt-0.5 text-[11px] italic text-ink-faint">{p.reason}</div>}
-                            {p.result && <div className={`mt-0.5 text-[11px] ${p.status === 'failed' ? 'text-danger' : 'text-ok'}`}>{p.result}</div>}
-                          </div>
-                          {p.status === 'pending' ? (
-                            <div className="flex shrink-0 gap-1">
-                              <Button size="sm" variant="primary" disabled={busy !== ''} onClick={() => void act('p' + p.id, () => api.proposalApply(m.id, p.id), 'Uygulandı.')}>
-                                {busy === 'p' + p.id ? <Loader2 size={12} className="animate-spin" /> : null} Uygula
-                              </Button>
-                              <Button size="sm" variant="ghost" disabled={busy !== ''} onClick={() => void act('s' + p.id, () => api.proposalSkip(m.id, p.id))}>
-                                Geç
-                              </Button>
-                            </div>
-                          ) : (
-                            <Chip className={p.status === 'applied' ? '!text-ok' : p.status === 'failed' ? '!text-danger' : ''}>{p.status === 'applied' ? 'uygulandı' : p.status === 'failed' ? 'başarısız' : 'geçildi'}</Chip>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                    <div className="mt-2 text-[11px] text-ink-faint">Hiçbiri onayınız olmadan uygulanmaz. Güneş kartı "bitti"ye taşıyamaz. Rakam, tutar ve isimleri uygulamadan önce kontrol edin; sohbette de konuşabilirsiniz.</div>
-                  </div>
-                )}
+                {proposalsBlock}
 
                 {/* Özet + wiki */}
                 {m.transcript && m.transcript.length > 0 && (
@@ -655,6 +829,9 @@ function MeetingDetail({ id, projects, retentionDays, onClose, onChanged, onOpen
                       })}
                     </div>
                   </div>
+                )}
+
+                  </>
                 )}
 
                 <div className="flex items-center justify-between border-t border-line pt-3">

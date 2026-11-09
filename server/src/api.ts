@@ -18,6 +18,7 @@ import { briefingToMarkdown, reportFilename } from './report.js';
 import { RETRYABLE, runProblems } from './health.js';
 import { searchKnowledge, type SearchType } from './search.js';
 import { listUnseen, markPresence, markSeen } from './nudges.js';
+import { bumpPet, buyPetItem, choosePetSpecies, earnPet, equipPetItem, feedPet, getPet, placePetItem, renamePet, setPetEnabled, unplacePetItem, visitPet } from './pet.js';
 import { synthesize, TtsError, ttsEnabled, ttsUsage, TTS_VOICES } from './tts.js';
 import { briefingFollowup, closeAppWindow, daySummary, endDay } from './day.js';
 
@@ -159,7 +160,11 @@ export function apiRouter() {
   );
   r.post(
     '/day/end',
-    wrap(async (_req, res) => res.json(await endDay())),
+    wrap(async (_req, res) => {
+      const out = await endDay();
+      void earnPet('day_closed');
+      res.json(out);
+    }),
   );
   r.post('/app/close', (_req, res) => {
     // Pencere kendini kapatamazsa (Edge --app kısıtı) sunucu Güneş profilli Edge'i kapatır
@@ -177,6 +182,42 @@ export function apiRouter() {
   r.get(
     '/day/state',
     wrap(async (_req, res) => res.json({ dayEnded: await store.getState('day_ended') })),
+  );
+
+  // ---------- Evcil hayvan (sadakat sistemi)
+  r.get(
+    '/pet',
+    wrap(async (_req, res) => res.json(await getPet())),
+  );
+  r.post(
+    '/pet/feed',
+    wrap(async (_req, res) => res.json(await feedPet())),
+  );
+  r.post(
+    '/pet/name',
+    wrap(async (req, res) => res.json(await renamePet(req.body?.name))),
+  );
+  r.post(
+    '/pet/enable',
+    wrap(async (req, res) => res.json(await setPetEnabled(Boolean(req.body?.on)))),
+  );
+  r.post(
+    '/pet/visit',
+    wrap(async (_req, res) => res.json(await visitPet())),
+  );
+  const petResult = (out: Awaited<ReturnType<typeof buyPetItem>>, res: Response) => ('error' in out ? res.status(400).json(out) : res.json(out));
+  const num = (v: unknown) => (typeof v === 'number' ? v : Number(v));
+  r.post('/pet/buy', wrap(async (req, res) => petResult(await buyPetItem(String(req.body?.item ?? '')), res)));
+  r.post('/pet/place', wrap(async (req, res) => petResult(await placePetItem(String(req.body?.item ?? ''), num(req.body?.x), num(req.body?.b)), res)));
+  r.post('/pet/unplace', wrap(async (req, res) => petResult(await unplacePetItem(String(req.body?.item ?? '')), res)));
+  r.post('/pet/equip', wrap(async (req, res) => petResult(await equipPetItem(String(req.body?.item ?? ''), Boolean(req.body?.on)), res)));
+  r.post('/pet/species', wrap(async (req, res) => petResult(await choosePetSpecies(String(req.body?.species ?? ''), Boolean(req.body?.buy)), res)));
+  r.post(
+    '/pet/event',
+    wrap(async (req, res) => {
+      const kind = req.body?.kind === 'play' ? 'plays' : 'pats';
+      res.json(await bumpPet(kind, num(req.body?.count ?? 1)));
+    }),
   );
 
   // ---------- Güneş'in seslenmeleri (pop-up)
@@ -355,6 +396,8 @@ export function apiRouter() {
       if (b.status && CARD_STATUSES.includes(b.status) && b.status !== card.status) {
         patch.status = b.status;
         patch.closed_at = b.status === 'done' ? new Date().toISOString() : null;
+        // Sadakat sistemi: kartı kullanıcı kendi kapattıysa puan (ajan kartı 'done' yapamaz)
+        if (b.status === 'done') void earnPet('card_done', { high: card.priority === 'critical' || card.priority === 'high' });
         await store.addActivity({
           card_id: card.id,
           actor: 'user',

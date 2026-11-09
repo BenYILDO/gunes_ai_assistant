@@ -9,6 +9,7 @@ import { basename, extname, join, resolve, sep } from 'node:path';
 import { config } from '../config.js';
 import { getStore } from '../store/index.js';
 import type { Meeting } from '../store/types.js';
+import { earnPet } from '../pet.js';
 import { cancelMeeting, finalizeMeeting, MeetingError, meetingDir, nameSpeaker, processMeeting, relabelSpeaker, removeMeetingFiles, transcriptText } from './pipeline.js';
 import { meetingTools } from './tools.js';
 import { callWatcher } from './callwatch.js';
@@ -276,10 +277,14 @@ export function meetingsRouter() {
 
   // Güneş'in önerileri (kart/wiki/hafıza): hiçbiri onaysız uygulanmaz
   r.post('/:id/proposals/apply-all', wrap(async (req, res) => {
-    res.json(full(await applyAllProposals(idOf(req))));
+    const out = full(await applyAllProposals(idOf(req)));
+    void earnPet('proposal');
+    res.json(out);
   }));
   r.post('/:id/proposals/:pid/apply', wrap(async (req, res) => {
-    res.json(full(await applyProposal(idOf(req), String(req.params.pid ?? ''))));
+    const out = full(await applyProposal(idOf(req), String(req.params.pid ?? '')));
+    void earnPet('proposal');
+    res.json(out);
   }));
   r.post('/:id/proposals/:pid/skip', wrap(async (req, res) => {
     res.json(full(await skipProposal(idOf(req), String(req.params.pid ?? ''))));
@@ -293,7 +298,9 @@ export function meetingsRouter() {
 
   r.post('/:id/finalize', wrap(async (req, res) => {
     const slug = 'projectSlug' in (req.body ?? {}) ? str(req.body.projectSlug, 120) || null : undefined;
-    res.json(full(await finalizeMeeting(idOf(req), { projectSlug: slug })));
+    const out = full(await finalizeMeeting(idOf(req), { projectSlug: slug }));
+    void earnPet('meeting');
+    res.json(out);
   }));
 
   r.delete('/:id', wrap(async (req, res) => {

@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { Bell, Cpu, Info, LocateFixed, MapPin, Mic, MonitorPlay, RefreshCw, Search, Settings2, Volume2, X } from 'lucide-react';
+import { Bell, Cpu, Info, LocateFixed, MapPin, Mic, MonitorPlay, PawPrint, RefreshCw, Search, Settings2, Volume2, X } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
-import { api, type Status, type Usage, type Weather } from '../lib/api';
+import { api, type Pet, type Status, type Usage, type Weather } from '../lib/api';
 import { useNow } from '../lib/hooks';
 import { effective, WindowRow } from './UsageMeter';
 import { relTime } from '../lib/time';
@@ -19,9 +19,13 @@ interface Props {
   weather: Weather | null;
   /** Konum değişince hava/gündem yenilensin */
   onLocationChanged: () => void;
+  pet: Pet | null;
+  onRenamePet: (name: string) => void;
+  /** Evcil hayvan özelliğini açar/kapatır (sunucuda saklanır; varsayılan kapalı) */
+  onTogglePet: (on: boolean) => void;
 }
 
-export function SettingsPanel({ open, onClose, status, onVoiceTest, onVoiceDiag, weather, onLocationChanged }: Props) {
+export function SettingsPanel({ open, onClose, status, onVoiceTest, onVoiceDiag, weather, onLocationChanged, pet, onRenamePet, onTogglePet }: Props) {
   const s = useSettings();
   const [voiceOn, setVoiceOn] = useState(voiceEnabled());
   const [mic, setMic] = useState<ListenState>(listener.state);
@@ -194,6 +198,39 @@ export function SettingsPanel({ open, onClose, status, onVoiceTest, onVoiceDiag,
                     { value: 'off', label: 'Kapalı' },
                   ]}
                 />
+              </Section>
+
+              {/* ---------------- Evcil hayvan */}
+              <Section icon={<PawPrint size={14} />} title="Evcil hayvan">
+                <Row label="Evcil hayvan" hint="Kapalıyken ekranda görünmez; puan, mağaza ve ödüller de çalışmaz (verileriniz silinmez)">
+                  <Toggle on={Boolean(pet?.enabled)} disabled={!pet} onChange={onTogglePet} />
+                </Row>
+                {pet?.enabled && (
+                <Row label="Boyut" hint={`%${Math.round(s.petScale * 100)} — en büyüğü %100, en küçüğü %50`}>
+                  <input
+                    type="range"
+                    min={50}
+                    max={100}
+                    step={5}
+                    value={Math.round(s.petScale * 100)}
+                    onChange={(e) => setSetting('petScale', Math.min(1, Math.max(0.5, Number(e.target.value) / 100)))}
+                    className="w-28 accent-[color:var(--accent)]"
+                    aria-label="Evcil hayvan boyutu"
+                  />
+                </Row>
+                )}
+                {pet?.enabled && (
+                  <>
+                    <Row label="Adı" hint={`${pet.streak > 0 ? `🔥 ${pet.streak} günlük seri · ` : ''}en iyi seri ${pet.bestStreak} gün · ${pet.totalFeeds} kez beslendi`}>
+                      <input
+                        defaultValue={pet.name}
+                        maxLength={20}
+                        onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== pet.name && onRenamePet(e.target.value)}
+                        className="w-28 rounded-lg border border-line bg-white/[0.05] px-2 py-1 text-sm text-ink"
+                      />
+                    </Row>
+                  </>
+                )}
               </Section>
 
               {/* ---------------- Bildirimler */}

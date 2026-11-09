@@ -16,10 +16,12 @@ export interface Settings {
   quietTo: string;
   /** Bir aramadayken (mikrofon açık) önemli olmayan bildirimler açılır pencere olmaz */
   callQuiet: boolean;
+  /** Kedinin boyutu: 1 = en büyük (üst sınır), 0,5 = yarısı */
+  petScale: number;
 }
 
 const KEY = 'gunes.settings';
-const DEFAULTS: Settings = { speechRate: 1.12, autoVoice: true, introMode: 'always', autoLocation: true, quietOn: false, quietFrom: '12:00', quietTo: '13:00', callQuiet: true };
+const DEFAULTS: Settings = { speechRate: 1.12, autoVoice: true, introMode: 'always', autoLocation: true, quietOn: false, quietFrom: '12:00', quietTo: '13:00', callQuiet: true, petScale: 0.75 };
 
 export function getSettings(): Settings {
   try {
