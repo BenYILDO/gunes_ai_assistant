@@ -12,6 +12,7 @@ import type { Meeting } from '../store/types.js';
 import { cancelMeeting, finalizeMeeting, MeetingError, meetingDir, nameSpeaker, processMeeting, relabelSpeaker, removeMeetingFiles, transcriptText } from './pipeline.js';
 import { meetingTools } from './tools.js';
 import { callWatcher } from './callwatch.js';
+import { abortNative, finishNative, nativeActive, nativeAvailable, nativeStatus, startNative } from './capture.js';
 
 const wrap =
   (fn: (req: Request, res: Response) => Promise<unknown>) => (req: Request, res: Response, next: NextFunction) =>
@@ -71,7 +72,7 @@ export function meetingsRouter() {
   // Hat için gereken araçlar var mı (arayüz uyarısı)
   r.get('/tools', wrap(async (_req, res) => {
     const t = meetingTools();
-    res.json({ ok: t.missing.length === 0, missing: t.missing, recordingsDir: config.meetings.recordingsDir || null, threshold: config.meetings.voiceThreshold, storeMode: store.mode, audioRetentionDays: config.meetings.audioRetentionDays, callWatch: config.meetings.callWatch });
+    res.json({ ok: t.missing.length === 0, missing: t.missing, recordingsDir: config.meetings.recordingsDir || null, threshold: config.meetings.voiceThreshold, storeMode: store.mode, audioRetentionDays: config.meetings.audioRetentionDays, callWatch: config.meetings.callWatch, nativeCapture: nativeAvailable() });
   }));
 
   // Takvim: yakın geçmiş ve gelecek toplantılar (kayıt/canlı dinleme için seçilir)
@@ -181,6 +182,7 @@ export function meetingsRouter() {
 
   // Canlı yakalama: tarayıcı ses parçalarını gönderir (siz kayıt almadan Güneş sizinle dinler)
   r.post('/live', wrap(async (req, res) => {
+    if (nativeStatus()) return void res.status(409).json({ error: 'Zaten bir canlı dinleme sürüyor.' });
     const m = await store.createMeeting({
       title: str(req.body?.title, 150) || 'Canlı toplantı',
       source: 'live',
@@ -192,15 +194,33 @@ export function meetingsRouter() {
     });
     const dir = meetingDir(m.id);
     mkdirSync(dir, { recursive: true });
-    const file = join(dir, 'live.webm');
-    const started = await store.updateMeeting(m.id, { audio_file: file });
+    // Önce yerel yakalama (ekran paylaşımı/izin gerekmez); olmazsa tarayıcı yöntemine düşülür (native:false)
+    let native = false;
+    let nativeError: string | null = null;
+    if (nativeAvailable() && req.body?.native !== false) {
+      try {
+        await startNative(m.id, { fromCall: Boolean(req.body?.fromCall) });
+        native = true;
+      } catch (e) {
+        nativeError = (e as Error).message;
+      }
+    }
+    const started = native ? m : await store.updateMeeting(m.id, { audio_file: join(dir, 'live.webm') });
     callWatcher.attach(m.id); // az önce bir arama okunduysa arayan adı bu toplantıya işlenir
-    res.json(light(started));
+    res.json({ ...light(started), native, nativeError });
+  }));
+
+  // Sunucudaki canlı dinleme durumu (arayüz yeniden yüklense de gerçeği gösterir)
+  r.get('/live/status', wrap(async (_req, res) => {
+    const st = nativeStatus();
+    if (!st) return void res.json({ active: false });
+    const m = await store.getMeeting(st.meetingId);
+    res.json({ active: true, native: true, meetingId: st.meetingId, title: m?.title ?? 'Canlı toplantı', startedAt: st.startedAt, micOk: st.micOk, sysOk: st.sysOk, devices: st.devices, error: st.error, stopping: st.stopping });
   }));
 
   r.post('/:id/chunk', wrap(async (req, res) => {
     const m = await store.getMeeting(idOf(req));
-    if (!m || m.source !== 'live' || m.status !== 'recording' || !m.audio_file) return void res.status(409).json({ error: 'Bu toplantı şu an dinlenmiyor.' });
+    if (!m || m.source !== 'live' || m.status !== 'recording' || !m.audio_file || nativeActive(m.id)) return void res.status(409).json({ error: 'Bu toplantı şu an dinlenmiyor.' });
     let size = 0;
     await new Promise<void>((ok, bad) => {
       const ws = createWriteStream(m.audio_file!, { flags: 'a' });
@@ -223,6 +243,10 @@ export function meetingsRouter() {
     const m = await store.getMeeting(idOf(req));
     if (!m) return void res.status(404).json({ error: 'Toplantı bulunamadı.' });
     if (m.status !== 'recording') return void res.status(409).json({ error: 'Bu toplantı dinleme modunda değil.' });
+    if (nativeActive(m.id)) {
+      const done = await finishNative(m.id);
+      return void res.json(light(done ?? m));
+    }
     if (!m.audio_file || !existsSync(m.audio_file) || statSync(m.audio_file).size < 20_000) {
       await store.updateMeeting(m.id, { status: 'error', error: 'Kayıtta ses yok. Ekran paylaşımında "sistem sesini paylaş" seçeneğini işaretlediniz mi?', step: '' });
       return void res.status(400).json({ error: 'Kayıtta ses yok. Ekran paylaşımında "sistem sesini paylaş" seçeneğini işaretleyin.' });
@@ -242,6 +266,7 @@ export function meetingsRouter() {
   }));
 
   r.post('/:id/cancel', wrap(async (req, res) => {
+    await abortNative(idOf(req));
     cancelMeeting(idOf(req));
     res.json({ ok: true });
   }));
@@ -270,6 +295,7 @@ export function meetingsRouter() {
 
   r.delete('/:id', wrap(async (req, res) => {
     const id = idOf(req);
+    await abortNative(id);
     cancelMeeting(id);
     await store.deleteMeeting(id);
     removeMeetingFiles(id); // yalnızca data/meetings/<id>; klasörden seçilen özgün dosyaya dokunulmaz

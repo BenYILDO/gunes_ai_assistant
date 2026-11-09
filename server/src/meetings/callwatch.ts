@@ -12,6 +12,7 @@ import type { EventItem } from '../store/types.js';
 import { config } from '../config.js';
 import { getStore } from '../store/index.js';
 import { run } from './tools.js';
+import { finishNative, nativeStatus } from './capture.js';
 import { identifyCaller, NO_IDENTITY, type Identity } from './callid.js';
 import { sameName } from './voices.js';
 
@@ -166,6 +167,11 @@ class CallWatcher {
       const active = activeCallApps(entries, config.meetings.callApps)[0] ?? null;
       const before = this.data;
       this.data = stepCall(this.data, active ? { sid: active.sid, app: active.label } : null, Date.now());
+      // Arama bitti (mikrofon kapandı): Güneş'in o arama için başlattığı yerel dinleme kendiliğinden biter ve işlenir
+      if (before.id && !this.data.id) {
+        const st = nativeStatus();
+        if (st?.fromCall && !st.stopping) void finishNative(st.meetingId).catch(() => {});
+      }
       if (this.data.id !== before.id) {
         this.event = null;
         this.identity = NO_IDENTITY;

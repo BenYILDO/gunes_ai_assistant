@@ -46,7 +46,7 @@ export function CallPrompt({ phase, onOpenMeetings }: { phase: Phase; onOpenMeet
       if (call.screenshot) void api.callIdentify().catch(() => {});
       const hhmm = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
       await liveCapture.start(
-        { title: call.event?.subject ?? `Plansız arama · ${call.app ?? 'arama'} · ${hhmm}`, event: call.event?.external_id },
+        { title: call.event?.subject ?? `Plansız arama · ${call.app ?? 'arama'} · ${hhmm}`, event: call.event?.external_id, fromCall: true },
         (m) => {
           if (m) toast('Dinleme bitti, yazıya çevriliyor.');
         },
@@ -96,7 +96,7 @@ export function CallPrompt({ phase, onOpenMeetings }: { phase: Phase; onOpenMeet
                 Bu aramaya katılmamı ister misiniz?
               </p>
               <p className="mt-1 text-[11px] leading-relaxed text-ink-faint">
-                "Katıl" derseniz sesi dinleyip yazıya çeviririm (bu bilgisayarda).{call?.screenshot ? " Arayanı görmek için arama penceresinin ekran görüntüsünü alıp Claude'a okuturum (görüntü saklanmaz, hemen silinir)." : ''} Arama dışındaki kişilerin bilgisi/onayı için kurum politikanıza uyun. Ses dosyası 30 gün sonra silinir.
+                "Katıl" derseniz sesi (mikrofonunuz + karşı taraf) dinleyip yazıya çeviririm; ekran paylaşımı ya da izin gerekmez, arama bitince kendiliğinden biterim.{call?.screenshot ? " Arayanı görmek için arama penceresinin ekran görüntüsünü alıp Claude'a okuturum (görüntü saklanmaz, hemen silinir)." : ''} Arama dışındaki kişilerin bilgisi/onayı için kurum politikanıza uyun. Ses dosyası 30 gün sonra silinir.
               </p>
               <div className="mt-3 flex gap-2">
                 <motion.button

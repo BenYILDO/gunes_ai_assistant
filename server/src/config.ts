@@ -93,6 +93,10 @@ export const config = {
     voiceThreshold: Number(env('GUNES_VOICE_THRESHOLD', '0.40')),
     /** Ses dosyası (özgün kayıt + wav) bu kadar gün sonra silinir; transkript, özet ve wiki kalır. 0 = hiç silme */
     audioRetentionDays: Number(env('GUNES_AUDIO_RETENTION_DAYS', '30')),
+    /** Canlı dinleme sesi tarayıcı yerine Güneş sunucusunun kendisi yakalar (ekran paylaşımı/izin yok). off = eski tarayıcı yöntemi */
+    nativeCapture: env('GUNES_NATIVE_CAPTURE', 'on') !== 'off',
+    /** Mikrofon cihazı adından bir parça (boşsa Windows'un varsayılan iletişim mikrofonu) */
+    micDevice: env('GUNES_MIC_DEVICE'),
     /** Arama algılama: Windows'un mikrofon kullanım kaydını izler; arama başlayınca Güneş "katılmamı ister misiniz?" diye sorar */
     callWatch: env('GUNES_CALL_WATCH', 'on') !== 'off',
     /** "Katıl" denince arama penceresinin görüntüsü alınıp Claude'a verilerek arayanın adı okunur (görüntü saklanmaz). off = kapalı */

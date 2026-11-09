@@ -3,9 +3,12 @@ import { api, type MeetingItem } from './api';
 
 /**
  * Canlı toplantı yakalama: siz kayıt almadan Güneş toplantıyı sizinle birlikte dinler.
- * Tarayıcı iki sesi karıştırır: karşı tarafın sesi (ekran paylaşımındaki "sistem sesi") + mikrofonunuz.
- * Ses parçaları yalnızca bu bilgisayardaki Güneş sunucusuna gider (127.0.0.1); toplantı bitince yerel olarak yazıya çevrilir.
- * Not: Teams'e katılan bir bot DEĞİLDİR; toplantıyı bu bilgisayarın hoparlör/kulaklık çıkışından yakalar.
+ *
+ * 1) YEREL YAKALAMA (varsayılan): ses doğrudan Güneş sunucusuna Windows'tan alınır (mikrofonunuz + hoparlör/kulaklık çıkışı).
+ *    Ekran paylaşımı, seçici ya da izin penceresi YOKTUR; tarayıcı yalnızca başlat/bitir der. Arayüz kapansa/yenilense de sürer;
+ *    arama bitince sunucu kendiliğinden bitirir (bkz. server/src/meetings/capture.ts).
+ * 2) TARAYICI YÖNTEMİ (yedek, GUNES_NATIVE_CAPTURE=off): ekran paylaşımındaki sistem sesi + mikrofon; her seferinde izin ister.
+ * Teams'e katılan bir bot DEĞİLDİR; toplantıyı bu bilgisayardan dinler.
  */
 export interface LiveState {
   active: boolean;
@@ -14,12 +17,14 @@ export interface LiveState {
   title: string;
   startedAt: number | null;
   micOk: boolean;
+  /** yerel yakalama mı (sunucuda) */
+  native: boolean;
   chunks: number;
   failed: number;
   error: string | null;
 }
 
-const idle: LiveState = { active: false, stopping: false, meetingId: null, title: '', startedAt: null, micOk: false, chunks: 0, failed: 0, error: null };
+const idle: LiveState = { active: false, stopping: false, meetingId: null, title: '', startedAt: null, micOk: false, native: false, chunks: 0, failed: 0, error: null };
 
 class LiveCapture {
   private s: LiveState = idle;
@@ -31,10 +36,14 @@ class LiveCapture {
   private queue: Blob[] = [];
   private pumping: Promise<void> | null = null;
   private onDone: ((m: MeetingItem | null) => void) | null = null;
+  private poller: ReturnType<typeof setInterval> | null = null;
+  /** Sunucu yerel yakalamayı destekliyor mu (bilinmiyorsa evet varsay) */
+  private nativeOk = true;
 
   getState = () => this.s;
   subscribe = (fn: () => void) => {
     this.subs.add(fn);
+    this.startPolling();
     return () => this.subs.delete(fn);
   };
   private set(p: Partial<LiveState>) {
@@ -46,12 +55,57 @@ class LiveCapture {
     return Boolean(navigator.mediaDevices?.getDisplayMedia) && typeof MediaRecorder !== 'undefined';
   }
 
-  /** Kullanıcı tıklamasından çağrılmalı (ekran paylaşımı izni için). */
-  async start(meta: { title?: string; event?: string; project?: string }, onDone?: (m: MeetingItem | null) => void) {
-    if (this.s.active) throw new Error('Zaten dinleniyor.');
-    if (!LiveCapture.supported()) throw new Error('Bu tarayıcı ekran/sistem sesi yakalamayı desteklemiyor.');
-    this.onDone = onDone ?? null;
+  /** Sunucudaki yerel dinleme durumunu izler: yenilenen sayfa devam eden dinlemeyi görür, arama bitince biten dinlemeyi yakalar. */
+  private startPolling() {
+    if (this.poller) return;
+    void api.meetingTools().then((t) => (this.nativeOk = t.nativeCapture !== false)).catch(() => {});
+    const tick = async () => {
+      try {
+        const st = await api.liveStatus();
+        if (st.active && !this.s.active) {
+          this.set({ ...idle, active: true, native: true, meetingId: st.meetingId, title: st.title, startedAt: st.startedAt, micOk: st.micOk, error: st.error });
+        } else if (st.active && this.s.native) {
+          this.set({ micOk: st.micOk, error: st.error, stopping: st.stopping, title: st.title });
+        } else if (!st.active && this.s.active && this.s.native && !this.s.stopping) {
+          // sunucu dinlemeyi kendiliğinden bitirdi (arama bitti)
+          const id = this.s.meetingId;
+          this.set({ ...idle });
+          const m = id ? await api.meeting(id).catch(() => null) : null;
+          this.onDone?.(m);
+          this.onDone = null;
+        }
+      } catch {
+        /* sunucuya ulaşılamadı: sonraki turda */
+      }
+    };
+    void tick();
+    this.poller = setInterval(() => void tick(), 3000);
+  }
 
+  /**
+   * "Dinle/Katıl" tıklamasından çağrılır. Yerel yakalama varsa izin/ekran paylaşımı sormadan başlar;
+   * yoksa (kapalıysa) tarayıcı yöntemine düşer (o zaman ekran paylaşımı izni gerekir).
+   */
+  async start(meta: { title?: string; event?: string; project?: string; fromCall?: boolean }, onDone?: (m: MeetingItem | null) => void) {
+    if (this.s.active) throw new Error('Zaten dinleniyor.');
+    this.onDone = onDone ?? null;
+    if (this.nativeOk) {
+      const m = await api.meetingLive({ ...meta, native: true });
+      if (m.native) {
+        this.set({ ...idle, active: true, native: true, meetingId: m.id, title: m.title, startedAt: Date.now(), micOk: true });
+        return m;
+      }
+      // yerel yakalama açılamadı: kaydı sil, nedeni söyle (tarayıcı yöntemine geçmek için kullanıcı hareketi çoktan sona erdi)
+      await api.meetingDelete(m.id).catch(() => {});
+      this.onDone = null;
+      throw new Error(`Yerel ses yakalama başlamadı: ${m.nativeError ?? 'bilinmeyen neden'}. .env'de GUNES_NATIVE_CAPTURE=off yaparsanız tarayıcı yöntemi (ekran paylaşımı) kullanılır.`);
+    }
+    return this.startBrowser(meta);
+  }
+
+  // ---------------------------------------------------------------- tarayıcı yöntemi (yedek)
+  private async startBrowser(meta: { title?: string; event?: string; project?: string }) {
+    if (!LiveCapture.supported()) throw new Error('Bu tarayıcı ekran/sistem sesi yakalamayı desteklemiyor.');
     // 1) Karşı tarafın sesi: ekran paylaşımı + "sistem sesini paylaş"
     const display = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
     if (!display.getAudioTracks().length) {
@@ -67,7 +121,7 @@ class LiveCapture {
     }
     let meeting: MeetingItem;
     try {
-      meeting = await api.meetingLive(meta);
+      meeting = await api.meetingLive({ ...meta, native: false });
     } catch (e) {
       display.getTracks().forEach((t) => t.stop());
       mic?.getTracks().forEach((t) => t.stop());
@@ -94,7 +148,7 @@ class LiveCapture {
         void this.pump();
       }
     };
-    rec.onstop = () => void this.finish();
+    rec.onstop = () => void this.finishBrowser();
     // Paylaşım penceresinden "Paylaşımı durdur" denirse otomatik bitir
     display.getAudioTracks().forEach((t) => (t.onended = () => void this.stop()));
 
@@ -105,7 +159,7 @@ class LiveCapture {
   }
 
   private warn = (e: BeforeUnloadEvent) => {
-    if (this.s.active) {
+    if (this.s.active && !this.s.native) {
       e.preventDefault();
       e.returnValue = '';
     }
@@ -132,14 +186,29 @@ class LiveCapture {
     return this.pumping;
   }
 
+  /** "Bitir ve işle": yerel yakalamada sunucu durdurup birleştirir; tarayıcı yönteminde son parçayı gönderip bitirir. */
   async stop() {
     if (!this.s.active || this.s.stopping) return;
     this.set({ stopping: true });
-    if (this.rec && this.rec.state !== 'inactive') this.rec.stop(); // son parça + onstop → finish()
-    else void this.finish();
+    if (this.s.native) {
+      const id = this.s.meetingId;
+      let m: MeetingItem | null = null;
+      let error: string | null = null;
+      try {
+        if (id) m = await api.meetingFinish(id);
+      } catch (e) {
+        error = (e as Error).message;
+      }
+      this.set({ ...idle, error });
+      this.onDone?.(m);
+      this.onDone = null;
+      return;
+    }
+    if (this.rec && this.rec.state !== 'inactive') this.rec.stop(); // son parça + onstop → finishBrowser()
+    else void this.finishBrowser();
   }
 
-  private async finish() {
+  private async finishBrowser() {
     await this.pump(); // kalan parçaları gönder
     const id = this.s.meetingId;
     this.display?.getTracks().forEach((t) => t.stop());

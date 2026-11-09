@@ -10,7 +10,7 @@ import type { Meeting } from '../store/types.js';
 import { meetingDir } from './pipeline.js';
 
 /** Silinecek ses dosyaları (toplantı klasörü içinde). Transkript .vtt ve diğer metinler kalır. */
-export const AUDIO_FILE = /^(audio\.wav|live\.webm|original\..+|araliklar\.json|vektorler\.json)$/i;
+export const AUDIO_FILE = /^(audio\.wav|live\.webm|capture\.wav|mic\.raw|sys-\d+\.raw|original\..+|araliklar\.json|vektorler\.json)$/i;
 
 const DAY = 864e5;
 

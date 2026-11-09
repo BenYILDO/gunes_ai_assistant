@@ -139,7 +139,7 @@ export function MeetingsView({ projects, onOpenWiki }: { projects: WikiPageMeta[
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-medium">{live.title}</div>
                   <div className="text-[11px] text-ink-faint">
-                    {clock(elapsed)} · {live.micOk ? 'karşı taraf + mikrofon' : 'yalnızca karşı taraf (mikrofon yok)'} · {live.chunks} parça aktarıldı
+                    {clock(elapsed)} · {live.micOk ? 'karşı taraf + mikrofon' : 'yalnızca karşı taraf (mikrofon yok)'} · {live.native ? 'yerel yakalama' : `${live.chunks} parça aktarıldı`}
                   </div>
                   {callerLine(callNow) && (
                     <div className="text-[11px] text-ink-dim" title="Arama penceresinin ekran görüntüsünden okundu; doğrulayın">
@@ -152,7 +152,7 @@ export function MeetingsView({ projects, onOpenWiki }: { projects: WikiPageMeta[
                 </Button>
               </div>
               {live.error && <div className="text-xs text-danger">{live.error}</div>}
-              <p className="text-[11px] leading-relaxed text-ink-faint">Toplantı bitince "Bitir ve işle"ye basın. Güneş yazıya çevirip sesleri ayırır; hesaplama bu bilgisayarda yapılır, ses dışarı çıkmaz.</p>
+              <p className="text-[11px] leading-relaxed text-ink-faint">{live.native ? 'Arama bitince kendiliğinden biter; isterseniz "Bitir ve işle"ye basın.' : 'Toplantı bitince "Bitir ve işle"ye basın.'} Güneş yazıya çevirip sesleri ayırır; hesaplama bu bilgisayarda yapılır, ses dışarı çıkmaz.</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -190,7 +190,12 @@ export function MeetingsView({ projects, onOpenWiki }: { projects: WikiPageMeta[
                 </div>
               </div>
               <p className="text-[11px] leading-relaxed text-ink-faint">
-                Başlatınca tarayıcı ekran paylaşımı ister: <b>Tüm ekran</b>ı seçip <b>Sistem sesini de paylaş</b> kutusunu işaretleyin. Kulaklık kullanırsanız sesler daha temiz ayrışır. Güneş toplantıya katılan bir bot değildir, toplantıyı bu bilgisayardan dinler;
+                {tools.data?.nativeCapture !== false ? (
+                  <>Başlatınca ekran paylaşımı ya da izin sorulmaz: mikrofonunuzu ve hoparlör/kulaklık çıkışını doğrudan alırım, arama bitince kendiliğinden biter. Kulaklık kullanırsanız karşı tarafın sesi mikrofonunuza sızmaz. </>
+                ) : (
+                  <>Başlatınca tarayıcı ekran paylaşımı ister: <b>Tüm ekran</b>ı seçip <b>Sistem sesini de paylaş</b> kutusunu işaretleyin. Kulaklık kullanırsanız sesler daha temiz ayrışır. </>
+                )}
+                Güneş toplantıya katılan bir bot değildir, toplantıyı bu bilgisayardan dinler;
                 toplantıdakilerin bilgisi/onayı için kurum politikanıza uyun.
               </p>
             </div>

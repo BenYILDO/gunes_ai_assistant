@@ -203,7 +203,7 @@ export interface MeetingItem {
   /** Yalnızca listede: satır sayısı */
   cues?: number;
 }
-export interface MeetingTools { ok: boolean; missing: string[]; recordingsDir: string | null; threshold: number; storeMode: 'supabase' | 'local'; audioRetentionDays: number; callWatch: boolean }
+export interface MeetingTools { ok: boolean; missing: string[]; recordingsDir: string | null; threshold: number; storeMode: 'supabase' | 'local'; audioRetentionDays: number; callWatch: boolean; nativeCapture: boolean }
 export interface CallSnapshot {
   prompt: boolean;
   status: 'idle' | 'detecting' | 'pending' | 'declined' | 'joined';
@@ -255,7 +255,10 @@ export const api = {
   meetingCalendar: () => req<CalendarMeeting[]>('/meetings/calendar'),
   meetingFolder: () => req<{ enabled: boolean; dir?: string; files: FolderFile[] }>('/meetings/folder'),
   meetingFromFolder: (path: string, extra: { title?: string; event?: string; project?: string } = {}) => req<MeetingItem>('/meetings/from-folder', json('POST', { path, ...extra })),
-  meetingLive: (extra: { title?: string; event?: string; project?: string } = {}) => req<MeetingItem>('/meetings/live', json('POST', extra)),
+  meetingLive: (extra: { title?: string; event?: string; project?: string; native?: boolean; fromCall?: boolean } = {}) =>
+    req<MeetingItem & { native?: boolean; nativeError?: string | null }>('/meetings/live', json('POST', extra)),
+  liveStatus: () =>
+    req<{ active: boolean; native?: boolean; meetingId?: string; title?: string; startedAt?: number; micOk?: boolean; sysOk?: number; error?: string | null; stopping?: boolean }>('/meetings/live/status'),
   meetingFinish: (id: string) => req<MeetingItem>(`/meetings/${id}/finish`, json('POST', {})),
   meetingReprocess: (id: string) => req<{ ok: boolean }>(`/meetings/${id}/reprocess`, json('POST', {})),
   meetingCancel: (id: string) => req<{ ok: boolean }>(`/meetings/${id}/cancel`, json('POST', {})),

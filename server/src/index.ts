@@ -8,6 +8,7 @@ import { hostGuard, originGuard } from './security.js';
 import { startScheduler } from './scheduler.js';
 import { getStore } from './store/index.js';
 import { recoverStaleMeetings } from './meetings/pipeline.js';
+import { recoverRecordings } from './meetings/capture.js';
 import { callWatcher } from './meetings/callwatch.js';
 import { startRingLog } from './meetings/ringlog.js';
 import { startAudioRetention } from './meetings/retention.js';
@@ -36,6 +37,7 @@ try {
   const stale = await store.closeStaleRuns('Sunucu kapandığı için yarıda kaldı');
   if (stale) console.log(`[güneş] ${stale} yarıda kalmış çalışma kapatıldı.`);
   await recoverStaleMeetings();
+  await recoverRecordings();
 } catch (e) {
   // Veritabanına ulaşılamasa bile arayüz açılsın; hata loglansın ve doctor ile incelensin.
   console.error('[güneş] Veri deposuna bağlanılamadı:', (e as Error).message, '→ npm run doctor');
