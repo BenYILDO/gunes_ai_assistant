@@ -23,6 +23,9 @@ export class MeetingError extends Error {
   }
 }
 
+/** Transkript hazır olunca (status=review) çağrılır; proposals.ts kaydeder (döngüsel içe aktarmayı önlemek için kanca). */
+export const hooks: { onReview: ((id: string) => void) | null } = { onReview: null };
+
 export const meetingDir = (id: string) => join(DATA_DIR, 'meetings', id);
 const MIN_EMBED_SEC = 1.0;
 
@@ -104,6 +107,7 @@ async function doProcess(id: string) {
   const abort = new AbortController();
   activeAbort.set(id, abort);
   const dir = meetingDir(id);
+  let ticker: NodeJS.Timeout | null = null; // ilerleme metni; hata olsa da temizlenir
   try {
     const t = meetingTools();
     if (t.missing.length) throw new Error(`Eksik araç/model: ${t.missing.join(', ')}. .env → GUNES_WHISPER_DIR ve scripts/whisper/RAPOR.md'ye bakın.`);
@@ -124,8 +128,13 @@ async function doProcess(id: string) {
 
     // 2) whisper.cpp (yerel): turbo-q5 + VAD + greedy (ölçüm: WER %24-30, ~1× gerçek zaman)
     const base = join(dir, 'transcript');
-    await setStep(id, 'Yazıya çevriliyor %0');
+    // İlerleme: whisper kısa kayıtta ilk pencereyi bitirene kadar yüzde yazmaz; geçen süreyi ve tahmini süreyi göster
+    const tW = Date.now();
+    const estimate = Math.round(duration * 1.2 + 15); // ölçüm: ≈1,0-1,2x gerçek zaman + model yükleme
     let last = -1;
+    const label = () => `Yazıya çevriliyor %${Math.max(last, 0)} · ${Math.round((Date.now() - tW) / 1000)} sn geçti (≈ ${estimate} sn sürer)`;
+    await setStep(id, label());
+    ticker = setInterval(() => void setStep(id, label()), 4000);
     const w = await run(
       t.whisper!,
       ['-m', t.whisperModel!, '-f', wav, '-l', 'tr', '-t', String(config.meetings.threads), '--vad', '-vm', t.vadModel!, '-bs', '1', '-bo', '1', '-ovtt', '-of', base, '-pp'],
@@ -135,11 +144,11 @@ async function doProcess(id: string) {
           const p = l.match(/progress\s*=\s*(\d+)%/);
           if (p && Number(p[1]) !== last) {
             last = Number(p[1]);
-            if (last % 5 === 0) void setStep(id, `Yazıya çevriliyor %${last}`);
           }
         },
       },
     );
+    if (ticker) clearInterval(ticker);
     if (w.code !== 0 || !existsSync(`${base}.vtt`)) throw new Error(`whisper hatası: ${w.stderr.slice(-300)}`);
     const raw = parseVtt(readFileSync(`${base}.vtt`, 'utf8'));
     if (!raw.length) throw new Error('Kayıtta konuşma bulunamadı.');
@@ -192,10 +201,14 @@ async function doProcess(id: string) {
       step: '',
       error: null,
     });
+    // Transkript hemen görünür. Arka planda: Haiku bağlam iyileştirme (özel isim/terim düzeltmesi), ardından Sonnet özet + kart/wiki/hafıza
+    // önerileri ve Güneş'in sorusu (onaysız hiçbir şey yazılmaz). Bkz. proposals.ts
+    if (config.meetings.refine || config.meetings.autoAnalyze) hooks.onReview?.(id);
   } catch (e) {
     const msg = abort.signal.aborted ? 'İptal edildi.' : (e as Error).message;
     await store.updateMeeting(id, { status: 'error', error: msg.slice(0, 600), step: '' }).catch(() => {});
   } finally {
+    if (ticker) clearInterval(ticker);
     activeAbort.delete(id);
   }
 }
@@ -339,12 +352,18 @@ export async function finalizeMeeting(id: string, opts: { projectSlug?: string |
   const projectSlug = opts.projectSlug === undefined ? m.project_slug : opts.projectSlug;
   m = await store.updateMeeting(id, { project_slug: projectSlug, step: 'Özet çıkarılıyor' });
 
-  const res = await runClaude({ prompt: buildSummaryPrompt(m, config.userName), model: config.modelThink, preset: 'none', effort: 'low', timeoutMs: 4 * 60_000 });
-  if (res.isError) {
-    await store.updateMeeting(id, { step: '' });
-    throw new Error(res.text.slice(0, 300) || 'Özet üretilemedi.');
+  let s: SummaryJson;
+  if (m.analysis) {
+    // Toplantı sonrası analiz zaten üretildi: ikinci bir Claude çağrısı yapma
+    s = { ozet: m.analysis.ozet, konular: m.analysis.konular, kararlar: m.analysis.kararlar, aksiyonlar: m.analysis.aksiyonlar };
+  } else {
+    const res = await runClaude({ prompt: buildSummaryPrompt(m, config.userName), model: config.modelThink, preset: 'none', effort: 'low', timeoutMs: 4 * 60_000 });
+    if (res.isError) {
+      await store.updateMeeting(id, { step: '' });
+      throw new MeetingError(res.text.slice(0, 300) || 'Özet üretilemedi.', 502);
+    }
+    s = parseSummary(res.text) ?? { ozet: clip(res.text, 1500) };
   }
-  const s = parseSummary(res.text) ?? { ozet: clip(res.text, 1500) };
 
   // Referanslar: takvim olayı, kişi sayfaları, proje sayfası
   const events = m.event_external_id ? await store.listEvents({ sinceDays: 400, limit: 5000 }) : [];

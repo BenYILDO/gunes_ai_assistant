@@ -20,13 +20,13 @@ export type PopupResult = 'join' | 'decline' | 'timeout' | 'closed' | 'error';
 const clip = (s: string | null | undefined, n: number) => (s ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 
 /** Saf: pencere metni (tarayıcıdaki popup ile aynı dil). */
-export function popupText(o: { app: string | null; planned: boolean; eventSubject: string | null; screenshot: boolean }): PopupText {
-  const who = o.app ? `${clip(o.app, 30)} mikrofonu açtı. ` : '';
-  const cal = o.planned && o.eventSubject ? `Takvimde bu saatte ${clip(o.eventSubject, 80)} var.` : 'Takvimde görünmüyor, plansız bir arama gibi.';
+export function popupText(o: { app: string | null; planned: boolean; eventSubject: string | null; screenshot: boolean; ringing?: boolean }): PopupText {
+  const who = o.ringing ? 'Teams’te bir arama çalıyor. ' : o.app ? `${clip(o.app, 30)} mikrofonu açtı. ` : '';
+  const cal = o.planned && o.eventSubject ? `Takvimde bu saatte ${clip(o.eventSubject, 80)} var.` : o.ringing ? '' : 'Takvimde görünmüyor, plansız bir arama gibi.';
   return {
     title: 'Bir arama fark ettim',
-    body: `${who}${cal} Bu aramaya katılmamı ister misiniz?`,
-    note: `Katıl derseniz sesi (mikrofonunuz + karşı taraf) dinleyip yazıya çeviririm; ${
+    body: `${who}${cal ? cal + ' ' : ''}Bu aramaya katılmamı ister misiniz?`.replace(/\s+/g, ' ').trim(),
+    note: `${o.ringing ? 'Katıl derseniz hemen dinlemeye başlarım; aramayı cevaplamazsanız kaydı atarım. ' : ''}Katıl derseniz sesi (mikrofonunuz + karşı taraf) dinleyip yazıya çeviririm; ${
       o.screenshot ? 'arayanı görmek için arama penceresinin görüntüsünü Claude’a okuturum (saklanmaz). ' : ''
     }Ekran paylaşımı gerekmez. Ses 30 gün sonra silinir.`,
     join: 'Katıl',

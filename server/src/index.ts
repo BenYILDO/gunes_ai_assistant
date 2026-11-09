@@ -10,7 +10,7 @@ import { getStore } from './store/index.js';
 import { recoverStaleMeetings } from './meetings/pipeline.js';
 import { recoverRecordings } from './meetings/capture.js';
 import { callWatcher } from './meetings/callwatch.js';
-import { startRingLog } from './meetings/ringlog.js';
+import { startRingWatch } from './meetings/ringwatch.js';
 import { startAudioRetention } from './meetings/retention.js';
 
 const app = express();
@@ -50,6 +50,6 @@ app.listen(config.port, '127.0.0.1', () => {
   startScheduler();
   // Arama algılama (yalnızca Windows), pencere günlüğü ve 30 günlük ses temizliği
   callWatcher.start();
-  startRingLog();
+  startRingWatch();
   startAudioRetention();
 });

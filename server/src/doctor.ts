@@ -56,6 +56,10 @@ if (hasSupabase) {
         // 0006: toplantılar ve ses profilleri (yoksa yalnızca Toplantılar paneli çalışmaz)
         const mt = await sb.from('meetings').select('id').limit(1);
         const vp = await sb.from('voice_profiles').select('id').limit(1);
+        if (!mt.error) {
+          const pr = await sb.from('meetings').select('proposals').limit(1);
+          if (pr.error) warn("Supabase: 'meetings.proposals' yok → Güneş'in toplantı sonrası önerileri kaydedilemez. İsterseniz supabase/migrations/0007_meeting_proposals.sql dosyasını SQL Editor'de çalıştırın");
+        }
         if (mt.error || vp.error) warn("Supabase: 'meetings'/'voice_profiles' yok → Toplantılar paneli çalışmaz. İsterseniz supabase/migrations/0006_meetings_voices.sql dosyasını SQL Editor'de çalıştırın (ses profilleri biyometrik veridir)");
       } catch {
         bad("Supabase: wiki tabloları yok → supabase/migrations/0003_attribution_wiki.sql dosyasını SQL Editor'de çalıştırın");

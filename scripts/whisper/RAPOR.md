@@ -139,6 +139,24 @@ Aynı toplantıda 6 kişilik çapraz sınama: %94,3 (Özer 145/146, Kerem 33/34,
 **Sınırlar:** profilli tek kişi (Yıldıray) farklı toplantıda sınandı; iki kayıt da Teams karışık mono. Az örnekli kişilerde (5-7 satır) tanıma başarısız oldu; profil için gereken en az konuşma miktarı ölçülmedi. Ses profili biyometriktir.
 Profiller ses biyometrisidir (kişisel veri): `sonuc/` dışına koymayın, git'e eklemeyin.
 
+### Beşinci tur: Haiku ile bağlam iyileştirme (transkript düzeltme)
+Yazıya çevirme sonrası Haiku'ya her ~1800 karakterlik parça verilir: toplantı bağlamı (takvim katılımcıları, wiki kişi/proje sayfaları, açık kartlar,
+hafıza) ve kurallar (rakam/tutar/tarih ASLA değişmez, anlam değişmez, emin değilsen dokunma). Yalnızca değişen satırlar döner; bir güvenlik süzgeci
+rakamları, uzunluğu ve değişen kelime oranını denetler, geçmeyen düzeltme atılır.
+
+| Toplantı | Düzeltilen satır | WER önce → sonra* | Rakam hatası | Özel isim hatası | Süre |
+|---|---|---|---|---|---|
+| 1 (20 dk, 442 satır) | 29 (%6,6) | %30,0 → %30,1 | 9/13 → 9/13 | 70 → 69 | 159 sn |
+| 2 (31 dk, 693 satır) | 21 (%3,0) | %24,4 → %24,3 | 34/80 → 34/80 | 82 → 81 | ≈ 3 dk |
+
+*Haiku Türkçe kesme işareti ekler ("Logo'ya"); `wer.py` noktalamayı boşluğa çevirdiği için bu kelimeyi ikiye bölüp ceza veriyordu (30,4 → 30,7).
+Adil karşılaştırma için iki tarafta da apostrof silindi (yukarıdaki sütun).
+
+**Sonuç:** Teams referansına göre WER'de ölçülebilir kazanç YOK (referans da aynı yerlerde hatalı; ör. "Yıldırım"), ama bozulma da yok ve rakamlar birebir korundu.
+Düzeltmeler gözle bakınca anlamlı: "Ödemildi reformları" → "Ödeme bildirimleri", "muhassa" → "muhasebe", "X-Lamay" → "XML", "zuma günü" → "Cuma günü",
+"Dükküman" → "Doküman", "Covestura döştürantın" → "cari hesabının", "kurum softla" → "Kurumsoft'la". Kazanç okunabilirlik ve özet/wiki/kart kalitesindedir,
+WER ile ölçülemez. Beklemeyi uzatmamak için transkript hemen görünür, iyileştirme arka planda yapılıp metin güncellenir (`GUNES_REFINE=off` ile kapatılır).
+
 ## Betikler
 - `indir-hepsi.ps1` — tüm program/model dosyalarını indirir ve hash doğrular (şirket filtresi nedeniyle BT eliyle indirildi).
 - `kos.ps1` — whisper-cli çalıştırır, süre ve tepe RAM ölçer. `wer.py` — WER, konuşmacı/rakam/isim hatası.

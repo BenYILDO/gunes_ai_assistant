@@ -191,6 +191,8 @@ export interface MeetingCue {
   score: number | null;
   /** Tanınmayan sesler için grup kimliği (MeetingSpeaker.id) */
   cluster: string | null;
+  /** Bağlam iyileştirme (Haiku) metni değiştirdiyse özgün konuşma tanıma metni */
+  raw?: string;
 }
 /** Toplantıdaki bir ses: tanınmış kişi ya da isimlendirilmeyi bekleyen tanınmayan ses grubu */
 export interface MeetingSpeaker {
@@ -203,6 +205,28 @@ export interface MeetingSpeaker {
   samples: { b: number; e: number }[];
   /** Grup merkezi: isim verilince profile dönüşür (yalnızca unknown) */
   embedding?: number[];
+}
+/** Toplantının yapılandırılmış özeti (Sonnet çıktısı) */
+export interface MeetingAnalysis {
+  ozet: string;
+  konular: string[];
+  kararlar: string[];
+  aksiyonlar: { kim: string; ne: string; ne_zaman: string }[];
+}
+export type ProposalKind = 'create_card' | 'update_card' | 'wiki_meeting_page' | 'wiki_append' | 'remember';
+/** Güneş'in önerdiği iş: kullanıcı onaylamadan hiçbir şey yazılmaz */
+export interface MeetingProposal {
+  id: string;
+  kind: ProposalKind;
+  /** Kullanıcıya gösterilen tek satır */
+  title: string;
+  /** Neden önerildi (transkriptten dayanak) */
+  reason: string;
+  status: 'pending' | 'applied' | 'skipped' | 'failed';
+  /** kind'a göre alanlar (bkz. server/src/meetings/proposals.ts) */
+  payload: Record<string, unknown>;
+  /** Uygulandıysa ne yapıldı (ör. "Kart açıldı: [ab12cd34]") */
+  result?: string;
 }
 export interface Meeting {
   id: string;
@@ -220,6 +244,10 @@ export interface Meeting {
   transcript: MeetingCue[];
   speakers: MeetingSpeaker[];
   summary: string | null;
+  /** Yapılandırılmış özet (özet/konular/kararlar/aksiyonlar); migration 0007 yoksa boş */
+  analysis?: MeetingAnalysis | null;
+  /** Güneş'in önerileri (kart/wiki/hafıza); migration 0007 yoksa boş */
+  proposals?: MeetingProposal[];
   error: string | null;
   created_at: string;
   updated_at: string;

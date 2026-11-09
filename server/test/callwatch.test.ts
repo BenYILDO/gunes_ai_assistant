@@ -58,9 +58,9 @@ test('durum makinesi: kısa mikrofon açılışı yok sayılır, süreklisi pend
   const o = { sid: 'zoom:1', app: 'Zoom.exe' };
   let s: CallData = stepCall(IDLE, o, 0);
   assert.equal(s.status, 'detecting');
-  s = stepCall(s, o, 2000);
+  s = stepCall(s, o, 1000);
   assert.equal(s.status, 'detecting', 'debounce dolmadı');
-  s = stepCall(s, o, 4500);
+  s = stepCall(s, o, 1800);
   assert.equal(s.status, 'pending');
   // anlık açılıp kapanma
   let t = stepCall(IDLE, o, 0);

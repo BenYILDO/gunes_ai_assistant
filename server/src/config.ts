@@ -91,6 +91,10 @@ export const config = {
     threads: Number(env('GUNES_WHISPER_THREADS', '8')),
     /** Bu benzerliğin altındaki ses "tanınmadı" sayılır (iki toplantıda ölçüldü: 0,40-0,45 en dengeli) */
     voiceThreshold: Number(env('GUNES_VOICE_THRESHOLD', '0.40')),
+    /** Transkript bağlam iyileştirme (Haiku): yanlış duyulmuş özel isim/terimleri bağlamla düzeltir; rakamlara dokunmaz, özgün metin saklanır */
+    refine: env('GUNES_REFINE', 'on') !== 'off',
+    /** Transkript hazır olunca Güneş özet çıkarır ve kart/wiki/hafıza ÖNERİLERİ sunar (onaysız hiçbir şey yazılmaz) */
+    autoAnalyze: env('GUNES_AUTO_ANALYZE', 'on') !== 'off',
     /** Ses dosyası (özgün kayıt + wav) bu kadar gün sonra silinir; transkript, özet ve wiki kalır. 0 = hiç silme */
     audioRetentionDays: Number(env('GUNES_AUDIO_RETENTION_DAYS', '30')),
     /** Canlı dinleme sesi tarayıcı yerine Güneş sunucusunun kendisi yakalar (ekran paylaşımı/izin yok). off = eski tarayıcı yöntemi */

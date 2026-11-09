@@ -13,6 +13,7 @@ import { cancelMeeting, finalizeMeeting, MeetingError, meetingDir, nameSpeaker, 
 import { meetingTools } from './tools.js';
 import { callWatcher } from './callwatch.js';
 import { startLiveMeeting } from './live.js';
+import { analyzeMeeting, applyAllProposals, applyProposal, skipProposal } from './proposals.js';
 import { abortNative, finishNative, nativeActive, nativeAvailable, nativeStatus } from './capture.js';
 
 const wrap =
@@ -271,6 +272,23 @@ export function meetingsRouter() {
   }));
   r.post('/:id/relabel', wrap(async (req, res) => {
     res.json(full(await relabelSpeaker(idOf(req), str(req.body?.from, 80), str(req.body?.to, 80))));
+  }));
+
+  // Güneş'in önerileri (kart/wiki/hafıza): hiçbiri onaysız uygulanmaz
+  r.post('/:id/proposals/apply-all', wrap(async (req, res) => {
+    res.json(full(await applyAllProposals(idOf(req))));
+  }));
+  r.post('/:id/proposals/:pid/apply', wrap(async (req, res) => {
+    res.json(full(await applyProposal(idOf(req), String(req.params.pid ?? ''))));
+  }));
+  r.post('/:id/proposals/:pid/skip', wrap(async (req, res) => {
+    res.json(full(await skipProposal(idOf(req), String(req.params.pid ?? ''))));
+  }));
+  // Özeti ve önerileri yeniden üret (sohbet bildirimi göndermeden)
+  r.post('/:id/analyze', wrap(async (req, res) => {
+    const m = await analyzeMeeting(idOf(req), { notify: false });
+    if (!m) return void res.status(502).json({ error: 'Analiz üretilemedi (transkript hazır mı? Claude yanıt verdi mi?).' });
+    res.json(full(m));
   }));
 
   r.post('/:id/finalize', wrap(async (req, res) => {

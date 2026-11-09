@@ -5,14 +5,16 @@
  * ve kullanıcıya "katılmamı ister misiniz?" diye sorar. Kullanıcı onaylamadan hiçbir şey kaydedilmez.
  * Takvimde o saatte toplantı varsa onunla eşleştirilir; yoksa "plansız arama" sayılır.
  *
- * Sınır: mikrofon arama CEVAPLANINCA (ya da başlatılınca) açılır; çalma anı bu yöntemle görülmez.
- * Çalma anı için ikinci bir sinyal denenir (bkz. ringlog.ts: Teams pencereleri günlüğe yazılır, henüz tetiklemez).
+ * Mikrofon arama CEVAPLANINCA (ya da başlatılınca) açılır. Çalan aramayı CEVAPTAN ÖNCE yakalamak için ikinci sinyal: Teams'in
+ * gelen arama bildirimi penceresi (bkz. ringwatch.ts). Çalarken sorulur, "Katıl" denirse hemen dinlenir; cevaplanmazsa kayıt atılır.
  */
 import type { EventItem } from '../store/types.js';
 import { config } from '../config.js';
 import { getStore } from '../store/index.js';
 import { run } from './tools.js';
-import { finishNative, nativeAvailable, nativeStatus } from './capture.js';
+import { abortNative, finishNative, nativeAvailable, nativeStatus } from './capture.js';
+import { removeMeetingFiles } from './pipeline.js';
+import { hasCallWords, ringEvents, type RingEvent } from './ringwatch.js';
 import { popupText, showCallPopup, type PopupHandle } from './callpopup.js';
 import { startLiveMeeting } from './live.js';
 import { identifyCaller, NO_IDENTITY, type Identity } from './callid.js';
@@ -99,8 +101,8 @@ export const IDLE: CallData = { id: null, app: null, since: null, lastSeen: 0, s
  * - Mikrofon `graceMs` boyunca kapalı kalırsa arama bitmiş sayılır.
  */
 export function stepCall(prev: CallData, obs: { sid: string; app: string } | null, now: number, o: { debounceMs?: number; graceMs?: number } = {}): CallData {
-  const debounce = o.debounceMs ?? 4000;
-  const grace = o.graceMs ?? 20000;
+  const debounce = o.debounceMs ?? 1500;
+  const grace = o.graceMs ?? 10000;
   if (obs) {
     if (prev.id !== obs.sid) return { id: obs.sid, app: obs.app, since: now, lastSeen: now, status: 'detecting' };
     const status = prev.status === 'detecting' && now - (prev.since ?? now) >= debounce ? 'pending' : prev.status;
@@ -109,6 +111,15 @@ export function stepCall(prev: CallData, obs: { sid: string; app: string } | nul
   if (prev.id && now - prev.lastSeen >= grace) return { ...IDLE };
   return prev;
 }
+
+/** Çalan aramanın oturumunu ("ring:…") cevaplanınca açılan gerçek mikrofon oturumuna devreder; verilen karar (katıl/reddet) korunur. */
+export function adoptRing(prev: CallData, obs: { sid: string; app: string } | null, now: number): CallData | null {
+  if (!obs || !prev.id?.startsWith('ring:') || prev.status === 'idle') return null;
+  return { ...prev, id: obs.sid, app: obs.app, lastSeen: now };
+}
+
+/** Çalan aramada bildirim metinleri gelene kadar en çok bu kadar beklenir (ms); gelmezse yine de sorulur. */
+export const RING_CONFIRM_MS = 700;
 
 /** Şu anki saate denk gelen takvim toplantısı (başlamadan 15 dk önce ... bittikten 10 dk sonra); en yakın başlangıç. */
 export function matchEvent(events: EventItem[], now: number): EventItem | null {
@@ -137,6 +148,8 @@ export interface CallSnapshot {
   event: { external_id: string; subject: string; occurred_at: string } | null;
   /** "Katıl" denince pencere görüntüsünden arayan okunur mu (GUNES_CALL_SCREENSHOT) */
   screenshot: boolean;
+  /** Arama şu an ÇALIYOR (henüz cevaplanmadı) */
+  ringing: boolean;
   /** Windows popup'ı şu an açık (tarayıcı popup'ı bu sırada gizlenir) */
   nativePopup: boolean;
   /** Popup'tan "Katıl" denince dinleme başlatılamadıysa neden */
@@ -152,19 +165,97 @@ class CallWatcher {
   private busy = false;
   private identity: Identity = NO_IDENTITY;
   private identityJob: Promise<void> | null = null;
+  private identifyOnAnswer = false;
   private attachId: string | null = null;
   private popup: PopupHandle | null = null;
   private popupFor: string | null = null;
   private joinError: string | null = null;
+  /** Çalan arama (Teams bildirim penceresi) */
+  private ring: { hwnd: string; goneAt: number | null; answered: boolean; timer: NodeJS.Timeout | null } | null = null;
+  /** Çalarken "Katıl" denince başlayan dinleme: cevaplanmazsa atılır */
+  private ringMeetingId: string | null = null;
+  private cal: EventItem[] = [];
+  private calAt = 0;
 
   start() {
     if (this.timer || process.platform !== 'win32' || !config.meetings.callWatch) return;
-    this.timer = setInterval(() => void this.tick(), 4000);
+    this.timer = setInterval(() => void this.tick(), 1000);
+    ringEvents.on('ring', this.onRingEvent);
+    void this.refreshCalendar();
     void this.tick();
   }
   stop() {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+    ringEvents.off('ring', this.onRingEvent);
+  }
+
+  /** Takvim önbelleği: popup'ın takvim eşleşmesini beklemeden göstermek için */
+  private async refreshCalendar() {
+    this.calAt = Date.now();
+    try {
+      this.cal = await getStore().listEvents({ sinceDays: 2, limit: 3000 });
+    } catch {
+      /* depo erişilemedi: eski önbellek kalır */
+    }
+  }
+
+  // ---------- çalan arama (Teams bildirim penceresi)
+  private onRingEvent = (e: RingEvent) => {
+    const now = Date.now();
+    if (e.type === 'toast') {
+      if (this.data.id) return; // zaten bir arama izleniyor
+      this.data = { id: `ring:${e.hwnd}`, app: 'Teams', since: now, lastSeen: now, status: 'detecting' };
+      this.event = null;
+      this.identity = NO_IDENTITY;
+      this.attachId = null;
+      this.joinError = null;
+      this.identifyOnAnswer = false;
+      this.ringMeetingId = null;
+      this.ring = { hwnd: e.hwnd, goneAt: null, answered: false, timer: setTimeout(() => this.confirmRing(e.hwnd), RING_CONFIRM_MS) };
+    } else if (e.type === 'texts') {
+      if (this.ring?.hwnd !== e.hwnd || this.data.status !== 'detecting') return;
+      // Bildirimde arama sözcüğü yoksa (ör. sohbet/hatırlatma bildirimi) sorma; metin hiç okunamazsa yine de sorulur
+      if (e.texts.length >= 3 && !hasCallWords(e.texts)) this.dropRing();
+      else this.confirmRing(e.hwnd);
+    } else if (e.type === 'toast-gone') {
+      if (this.ring?.hwnd === e.hwnd) this.ring.goneAt = now;
+    }
+  };
+
+  private confirmRing(hwnd: string) {
+    if (this.ring?.hwnd !== hwnd || this.data.id !== `ring:${hwnd}` || this.data.status !== 'detecting') return;
+    if (this.ring.timer) clearTimeout(this.ring.timer);
+    this.data = { ...this.data, status: 'pending' };
+    this.event = matchEvent(this.cal, Date.now());
+    this.maybeShowPopup(true);
+  }
+
+  /** Çalan "arama" aslında arama değildi: hiçbir şey yapmadan bırak */
+  private dropRing() {
+    if (this.ring?.timer) clearTimeout(this.ring.timer);
+    this.ring = null;
+    this.data = { ...IDLE };
+  }
+
+  /** Arama çaldı ama cevaplanmadı (reddedildi/kaçırıldı): popup kapanır; "Katıl" denmişse başlayan dinleme ATILIR. */
+  private async endRingUnanswered() {
+    if (this.ring?.timer) clearTimeout(this.ring.timer);
+    this.ring = null;
+    this.popup?.close();
+    const id = this.ringMeetingId;
+    this.ringMeetingId = null;
+    if (id) {
+      await abortNative(id).catch(() => {});
+      await getStore().deleteMeeting(id).catch(() => {});
+      removeMeetingFiles(id);
+    }
+    this.data = { ...IDLE };
+    this.event = null;
+    this.identity = NO_IDENTITY;
+    this.attachId = null;
+    this.joinError = null;
+    this.identifyOnAnswer = false;
   }
 
   private async tick() {
@@ -173,16 +264,36 @@ class CallWatcher {
     try {
       const entries = await readMicEntries();
       if (!entries) return;
+      const now = Date.now();
       const active = activeCallApps(entries, config.meetings.callApps)[0] ?? null;
+      const obs = active ? { sid: active.sid, app: active.label } : null;
+      if (now - this.calAt > 60_000) void this.refreshCalendar();
       const before = this.data;
-      this.data = stepCall(this.data, active ? { sid: active.sid, app: active.label } : null, Date.now());
+      // Çalan arama cevaplandı (mikrofon açıldı): çalma oturumunu gerçek aramaya devret; karar/olay/kimlik korunur
+      const adopted = adoptRing(this.data, obs, now);
+      if (adopted) {
+        if (this.popupFor === this.data.id) this.popupFor = adopted.id;
+        this.data = adopted;
+        if (this.ring) this.ring.answered = true;
+        this.ringMeetingId = null; // cevaplandı: başlayan dinleme artık gerçek aramanın dinlemesi
+        if (this.identifyOnAnswer) {
+          this.identifyOnAnswer = false;
+          setTimeout(() => this.startIdentify(), 1500); // arama penceresi açılınca arayanı oku
+        }
+      } else if (this.ring && this.ring.goneAt === null && this.data.id) {
+        this.data = { ...this.data, lastSeen: now }; // bildirim penceresi sürdükçe çalan oturum canlı
+      }
+      this.data = stepCall(this.data, obs, now);
+      // Çaldı ama cevaplanmadı
+      if (this.ring && !this.ring.answered && this.ring.goneAt && now - this.ring.goneAt > 4000 && !obs) await this.endRingUnanswered();
       // Arama bitti (mikrofon kapandı): Güneş'in o arama için başlattığı yerel dinleme kendiliğinden biter ve işlenir
       if (before.id && !this.data.id) {
         this.popup?.close();
+        this.ring = null;
         const st = nativeStatus();
         if (st?.fromCall && !st.stopping) void finishNative(st.meetingId).catch(() => {});
       }
-      if (this.data.id !== before.id) {
+      if (this.data.id !== before.id && !adopted) {
         this.event = null;
         this.identity = NO_IDENTITY;
         this.attachId = null;
@@ -192,9 +303,9 @@ class CallWatcher {
         // Güneş zaten bu toplantıyı dinliyorsa (kullanıcı elle başlattı) sorma
         const meetings = await getStore().listMeetings(5).catch(() => []);
         if (meetings.some((m) => m.status === 'recording')) this.data = { ...this.data, status: 'joined' };
-        else this.event = matchEvent(await getStore().listEvents({ sinceDays: 2, limit: 3000 }).catch(() => []), Date.now());
+        else if (!this.event) this.event = matchEvent(this.cal, now);
       }
-      if (this.data.status === 'pending') this.maybeShowPopup();
+      if (this.data.status === 'pending') this.maybeShowPopup(false);
     } catch {
       /* kayıt defteri okunamadı: sessiz geç, sonraki turda tekrar */
     } finally {
@@ -212,6 +323,7 @@ class CallWatcher {
       planned: Boolean(this.event),
       event: this.event ? { external_id: this.event.external_id, subject: this.event.subject ?? this.event.summary.slice(0, 80), occurred_at: this.event.occurred_at } : null,
       screenshot: config.meetings.callScreenshot,
+      ringing: Boolean(this.ring && !this.ring.answered && this.data.id?.startsWith('ring:')),
       nativePopup: this.popup !== null,
       error: this.joinError,
       identity: { status: this.identity.status, callers: this.identity.callers, title: this.identity.title, confidence: this.identity.confidence, note: this.identity.note },
@@ -258,12 +370,12 @@ class CallWatcher {
   }
 
   /** Windows popup'ını gösterir (her arama için bir kez); karar gelince Katıl/Şimdi değil uygulanır. */
-  private maybeShowPopup() {
+  private maybeShowPopup(ringing = false) {
     const d = this.data;
     if (!config.meetings.callPopup || !nativeAvailable() || !d.id || d.status !== 'pending' || this.popupFor === d.id) return;
     this.popupFor = d.id;
     const idAtShow = d.id;
-    const text = popupText({ app: d.app, planned: Boolean(this.event), eventSubject: this.event ? (this.event.subject ?? this.event.summary) : null, screenshot: config.meetings.callScreenshot });
+    const text = popupText({ app: d.app, planned: Boolean(this.event), eventSubject: this.event ? (this.event.subject ?? this.event.summary) : null, screenshot: config.meetings.callScreenshot, ringing });
     const handle = showCallPopup(text);
     this.popup = handle;
     void handle.result.then(async (r) => {
@@ -276,13 +388,17 @@ class CallWatcher {
 
   /** Popup'tan "Katıl": önce arayanı oku (Teams hâlâ en üstte), sonra yerel dinlemeyi başlat. Tarayıcı gerekmez. */
   async joinNative() {
-    this.startIdentify();
+    // Çalarken katılındıysa arayanı cevaptan sonra (arama penceresi açılınca) oku; cevaplanmışsa hemen
+    const ringing = Boolean(this.ring && !this.ring.answered);
+    if (ringing) this.identifyOnAnswer = true;
+    else this.startIdentify();
     const d = this.data;
     const hhmm = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', timeZone: config.timezone });
     const title = this.event ? (this.event.subject ?? this.event.summary.slice(0, 80)) : `Plansız arama · ${d.app ?? 'arama'} · ${hhmm}`;
     try {
       const { meeting } = await startLiveMeeting({ title, event: this.event?.external_id ?? null, native: true, fromCall: true, requireNative: true });
       this.joinError = null;
+      if (ringing && !this.ring?.answered) this.ringMeetingId = meeting.id; // cevaplanmazsa atılır
       this.joined();
       this.attach(meeting.id);
     } catch (e) {

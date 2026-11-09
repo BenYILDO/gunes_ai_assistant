@@ -86,7 +86,7 @@ export function CallPrompt({ phase, onOpenMeetings }: { phase: Phase; onOpenMeet
                 </button>
               </div>
               <p className="mt-1 text-[12.5px] leading-relaxed text-ink-dim">
-                {call?.app ? `${call.app} mikrofonu açtı. ` : ''}
+                {call?.ringing ? 'Teams’te bir arama çalıyor. ' : call?.app ? `${call.app} mikrofonu açtı. ` : ''}
                 {call?.planned ? (
                   <>
                     Takvimde bu saatte <b className="text-ink">{title}</b> var.

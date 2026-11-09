@@ -178,7 +178,10 @@ export interface MeetingSpeaker {
   seconds: number;
   samples: { b: number; e: number }[];
 }
-export interface MeetingCue { b: number; e: number; text: string; speaker: string | null; score: number | null; cluster: string | null }
+export interface MeetingCue { b: number; e: number; text: string; speaker: string | null; score: number | null; cluster: string | null; raw?: string }
+export type ProposalKind = 'create_card' | 'update_card' | 'wiki_meeting_page' | 'wiki_append' | 'remember';
+export interface MeetingProposal { id: string; kind: ProposalKind; title: string; reason: string; status: 'pending' | 'applied' | 'skipped' | 'failed'; payload: Record<string, unknown>; result?: string }
+export interface MeetingAnalysis { ozet: string; konular: string[]; kararlar: string[]; aksiyonlar: { kim: string; ne: string; ne_zaman: string }[] }
 export type MeetingStatus = 'recording' | 'queued' | 'processing' | 'review' | 'done' | 'error';
 export interface MeetingItem {
   id: string;
@@ -196,6 +199,9 @@ export interface MeetingItem {
   summary: string | null;
   error: string | null;
   created_at: string;
+  /** Yapılandırılmış özet ve Güneş'in önerileri (migration 0007) */
+  analysis?: MeetingAnalysis | null;
+  proposals?: MeetingProposal[];
   /** Ses dosyası hâlâ duruyor mu (saklama süresi dolunca silinir) */
   has_audio?: boolean;
   /** Yalnızca ayrıntıda */
@@ -212,6 +218,8 @@ export interface CallSnapshot {
   planned: boolean;
   event: { external_id: string; subject: string; occurred_at: string } | null;
   screenshot: boolean;
+  /** Arama şu an çalıyor (henüz cevaplanmadı) */
+  ringing: boolean;
   /** Windows popup'ı açık: tarayıcı popup'ı gizlenir */
   nativePopup: boolean;
   /** Popup'tan Katıl denince dinleme başlatılamadıysa neden */
@@ -270,6 +278,10 @@ export const api = {
   meetingName: (id: string, speakerId: string, name: string) => req<MeetingItem>(`/meetings/${id}/name`, json('POST', { speakerId, name })),
   meetingRelabel: (id: string, from: string, to: string) => req<MeetingItem>(`/meetings/${id}/relabel`, json('POST', { from, to })),
   meetingFinalize: (id: string, projectSlug?: string | null) => req<MeetingItem>(`/meetings/${id}/finalize`, json('POST', projectSlug === undefined ? {} : { projectSlug })),
+  meetingAnalyze: (id: string) => req<MeetingItem>(`/meetings/${id}/analyze`, json('POST', {})),
+  proposalApply: (id: string, pid: string) => req<MeetingItem>(`/meetings/${id}/proposals/${pid}/apply`, json('POST', {})),
+  proposalSkip: (id: string, pid: string) => req<MeetingItem>(`/meetings/${id}/proposals/${pid}/skip`, json('POST', {})),
+  proposalApplyAll: (id: string) => req<MeetingItem>(`/meetings/${id}/proposals/apply-all`, json('POST', {})),
   meetingDelete: (id: string) => req<{ ok: boolean }>(`/meetings/${id}`, json('DELETE')),
   meetingClipUrl: (id: string, b: number, e: number) => `/api/meetings/${id}/clip?b=${b.toFixed(2)}&e=${e.toFixed(2)}`,
   meetingTranscriptUrl: (id: string) => `/api/meetings/${id}/transcript.md`,

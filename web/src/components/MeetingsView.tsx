@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { AlertTriangle, CalendarClock, CheckCircle2, Download, FileAudio, FolderOpen, Headphones, Link2, Loader2, Mic, Play, Radio, RotateCw, ShieldAlert, Square, Trash2, Upload, Users, X } from 'lucide-react';
+import { AlertTriangle, CalendarClock, Sparkles, CheckCircle2, Download, FileAudio, FolderOpen, Headphones, Link2, Loader2, Mic, Play, Radio, RotateCw, ShieldAlert, Square, Trash2, Upload, Users, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { api, type CalendarMeeting, type MeetingItem, type MeetingStatus, type WikiPageMeta } from '../lib/api';
+import { api, type CalendarMeeting, type MeetingItem, type MeetingProposal, type MeetingStatus, type WikiPageMeta } from '../lib/api';
 import { usePoll } from '../lib/hooks';
 import { callerLine, useCall } from '../lib/callState';
 import { liveCapture, liveSupported, useLive } from '../lib/liveCapture';
@@ -21,6 +21,19 @@ const dur = (sn: number | null) => (sn ? `${Math.max(1, Math.round(sn / 60))} dk
 const clock = (sn: number) => `${String(Math.floor(sn / 60)).padStart(2, '0')}:${String(Math.floor(sn % 60)).padStart(2, '0')}`;
 const hue = (s: string) => [...s].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 360, 7);
 const who = (name: string | null, cluster: string | null) => name ?? (cluster ? `Ses ${cluster.replace('ses-', '')}` : '?');
+
+const KIND_LABEL: Record<MeetingProposal['kind'], string> = {
+  create_card: '🗂️ Kart aç',
+  update_card: '📝 Karta not',
+  wiki_meeting_page: '📚 Wiki sayfası',
+  wiki_append: "📚 Wiki'ye ekle",
+  remember: '🧠 Hafızaya al',
+};
+const detailOf = (p: MeetingProposal) => {
+  const v = p.payload as Record<string, unknown>;
+  const t = [v.description, v.note, v.text, v.content].find((x) => typeof x === 'string' && x) as string | undefined;
+  return t ? t.slice(0, 220) : '';
+};
 
 function play(url: string) {
   void new Audio(url).play().catch(() => {});
@@ -280,7 +293,7 @@ export function MeetingsView({ projects, onOpenWiki }: { projects: WikiPageMeta[
                 <div className={`flex items-center gap-1.5 text-xs ${STATUS[m.status].cls}`}>
                   {(m.status === 'processing' || m.status === 'queued') && <Loader2 size={12} className="animate-spin" />}
                   {m.status === 'done' && <CheckCircle2 size={13} />}
-                  {m.status === 'processing' && m.step ? m.step : STATUS[m.status].label}
+                  {m.step && m.status !== 'error' ? m.step : STATUS[m.status].label}
                 </div>
               </button>
             ))}
@@ -417,7 +430,7 @@ function MeetingDetail({ id, projects, retentionDays, onClose, onChanged, onOpen
             <div className="flex items-center gap-2 border-b border-line px-4 py-3">
               <Users size={16} className="text-ink-dim" />
               <div className="min-w-0 flex-1 truncate font-display text-sm font-medium">{m?.title ?? 'Toplantı'}</div>
-              {m && <span className={`text-xs ${STATUS[m.status].cls}`}>{m.status === 'processing' && m.step ? m.step : STATUS[m.status].label}</span>}
+              {m && <span className={`text-xs ${STATUS[m.status].cls}`}>{m.step && m.status !== 'error' ? m.step : STATUS[m.status].label}</span>}
               <button onClick={onClose} className="text-ink-faint hover:text-ink">
                 <X size={16} />
               </button>
@@ -538,6 +551,48 @@ function MeetingDetail({ id, projects, retentionDays, onClose, onChanged, onOpen
                   </div>
                 )}
 
+                {/* Güneş'in önerileri: hiçbiri onaysız uygulanmaz */}
+                {(m.proposals ?? []).length > 0 && (
+                  <div className="rounded-xl border border-[color:var(--accent)]/30 bg-white/[0.03] p-3">
+                    <div className="mb-2 flex items-center gap-2 text-[10.5px] font-medium uppercase tracking-[0.14em] text-accent">
+                      <Sparkles size={12} /> Güneş'in önerileri
+                      {(m.proposals ?? []).filter((p) => p.status === 'pending').length > 1 && (
+                        <Button size="sm" variant="primary" className="ml-auto" disabled={busy !== ''} onClick={() => void act('pall', () => api.proposalApplyAll(m.id), 'Önerilerin hepsi uygulandı.')}>
+                          {busy === 'pall' ? <Loader2 size={12} className="animate-spin" /> : null} Hepsini uygula ({(m.proposals ?? []).filter((p) => p.status === 'pending').length})
+                        </Button>
+                      )}
+                    </div>
+                    <div className="space-y-1.5">
+                      {(m.proposals ?? []).map((p) => (
+                        <div key={p.id} className="flex items-start gap-2 rounded-lg border border-line bg-black/20 p-2 text-xs">
+                          <div className="min-w-0 flex-1">
+                            <div className="text-ink">
+                              <span className="text-ink-faint">{KIND_LABEL[p.kind]}: </span>
+                              {p.title}
+                            </div>
+                            {detailOf(p) && <div className="mt-0.5 text-[11px] leading-relaxed text-ink-dim">{detailOf(p)}</div>}
+                            {p.reason && <div className="mt-0.5 text-[11px] italic text-ink-faint">{p.reason}</div>}
+                            {p.result && <div className={`mt-0.5 text-[11px] ${p.status === 'failed' ? 'text-danger' : 'text-ok'}`}>{p.result}</div>}
+                          </div>
+                          {p.status === 'pending' ? (
+                            <div className="flex shrink-0 gap-1">
+                              <Button size="sm" variant="primary" disabled={busy !== ''} onClick={() => void act('p' + p.id, () => api.proposalApply(m.id, p.id), 'Uygulandı.')}>
+                                {busy === 'p' + p.id ? <Loader2 size={12} className="animate-spin" /> : null} Uygula
+                              </Button>
+                              <Button size="sm" variant="ghost" disabled={busy !== ''} onClick={() => void act('s' + p.id, () => api.proposalSkip(m.id, p.id))}>
+                                Geç
+                              </Button>
+                            </div>
+                          ) : (
+                            <Chip className={p.status === 'applied' ? '!text-ok' : p.status === 'failed' ? '!text-danger' : ''}>{p.status === 'applied' ? 'uygulandı' : p.status === 'failed' ? 'başarısız' : 'geçildi'}</Chip>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-2 text-[11px] text-ink-faint">Hiçbiri onayınız olmadan uygulanmaz. Güneş kartı "bitti"ye taşıyamaz. Rakam, tutar ve isimleri uygulamadan önce kontrol edin; sohbette de konuşabilirsiniz.</div>
+                  </div>
+                )}
+
                 {/* Özet + wiki */}
                 {m.transcript && m.transcript.length > 0 && (
                   <div className="rounded-xl border border-line bg-white/[0.03] p-3">
@@ -561,6 +616,9 @@ function MeetingDetail({ id, projects, retentionDays, onClose, onChanged, onOpen
                           Wiki sayfasını aç
                         </Button>
                       )}
+                      <Button size="sm" variant="ghost" disabled={busy !== '' || m.status === 'processing' || Boolean(m.step)} onClick={() => void act('an', () => api.meetingAnalyze(m.id), 'Özet ve öneriler yenilendi.')}>
+                        {busy === 'an' ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />} {m.analysis ? 'Önerileri yenile' : 'Özet ve öneri üret'}
+                      </Button>
                       <a href={api.meetingTranscriptUrl(m.id)} className="ml-auto inline-flex items-center gap-1 text-xs text-ink-faint hover:text-ink" download>
                         <Download size={12} /> Transkript (.md)
                       </a>
