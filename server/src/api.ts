@@ -12,6 +12,7 @@ import { localDate } from './scheduler.js';
 import { getWeather, setLocation } from './weather.js';
 import { buildFocusPlan, dayKey } from './focus.js';
 import { generateDraft, TONES, type Tone } from './draft.js';
+import { composeMail, composeState } from './compose.js';
 import { briefingToMarkdown, reportFilename } from './report.js';
 import { RETRYABLE, runProblems } from './health.js';
 import { searchKnowledge, type SearchType } from './search.js';
@@ -238,6 +239,22 @@ export function apiRouter() {
       res.json({ draft });
     }),
   );
+
+  // ---------- Serbest mail taslağı: Sonnet soru sorar → Haiku geçmişi tarar → Sonnet yazar (gönderilmez)
+  r.post(
+    '/draft/compose',
+    wrap(async (req, res) => {
+      const request = typeof req.body?.request === 'string' ? req.body.request.trim() : '';
+      if (request.length < 5) return void res.status(400).json({ error: 'Ne yazılacağını kısaca anlatın.' });
+      if (composeState.stage !== 'idle') return void res.status(409).json({ error: 'Bir mail taslağı zaten hazırlanıyor.' });
+      const tone = (Object.keys(TONES) as Tone[]).includes(req.body?.tone) ? (req.body.tone as Tone) : 'kisa';
+      const note = typeof req.body?.note === 'string' ? req.body.note : undefined;
+      res.json(await composeMail(store, { request: request.slice(0, 4000), tone, note }));
+    }),
+  );
+  r.get('/draft/compose/progress', (_req, res) => {
+    res.json({ stage: composeState.stage, questions: composeState.questions, elapsed: composeState.startedAt ? Math.round((Date.now() - composeState.startedAt) / 1000) : 0 });
+  });
 
   // ---------- Odak planı: takvimdeki boşluklara kart önerileri (takvime yazmaz)
   r.get(

@@ -26,6 +26,7 @@ import { runVoiceDiag } from './lib/voiceDiag';
 import { getSettings } from './lib/settings';
 import { SettingsPanel } from './components/SettingsPanel';
 import { SearchPalette } from './components/SearchPalette';
+import { ComposeModal } from './components/ComposeModal';
 import { ProblemBanner } from './components/ProblemBanner';
 import { isEcho, parseIntent, stripWake } from './lib/voiceCommands';
 import { NudgePopup } from './components/NudgePopup';
@@ -117,6 +118,7 @@ export default function App() {
   const [farewell, setFarewell] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [composeOpen, setComposeOpen] = useState(false);
   const [wikiJump, setWikiJump] = useState<{ slug: string; n: number } | null>(null);
   const [voiceSegs, setVoiceSegs] = useState<Segment[] | null>(null);
   const [chatExternal, setChatExternal] = useState<{ id: number; text: string } | null>(null);
@@ -481,6 +483,7 @@ export default function App() {
           onEndDay={() => setFarewell(true)}
           onSettings={() => setSettingsOpen(true)}
           onSearch={() => setSearchOpen(true)}
+          onCompose={() => setComposeOpen(true)}
         />
 
         <ProblemBanner
@@ -604,6 +607,8 @@ export default function App() {
       <AnimatePresence>
         {voiceSegs && <VoiceBriefing key="voice" segments={voiceSegs} phase={phase} onAction={voiceAction} onExit={voiceExit} />}
       </AnimatePresence>
+
+      <ComposeModal open={composeOpen} onClose={() => setComposeOpen(false)} />
 
       <SearchPalette
         open={searchOpen}

@@ -190,6 +190,12 @@ export interface SearchHit {
 
 export const api = {
   draftReply: (id: string, tone: 'kisa' | 'resmi' | 'samimi', note?: string) => req<{ draft: string }>(`/cards/${id}/draft`, json('POST', { tone, note })),
+  composeMail: (request: string, tone: 'kisa' | 'resmi' | 'samimi', note?: string) =>
+    req<{ draft: string; plan: { recipient: string; purpose: string; questions: string[] }; findings: string; seconds: { plan: number; research: number; write: number } }>(
+      '/draft/compose',
+      json('POST', { request, tone, note }),
+    ),
+  composeProgress: () => req<{ stage: 'idle' | 'plan' | 'research' | 'write'; questions: number; elapsed: number }>('/draft/compose/progress'),
   focus: (day: 'today' | 'tomorrow') => req<FocusPlan>(`/focus?day=${day}`),
   search: (q: string) => req<SearchHit[]>(`/search?q=${encodeURIComponent(q)}`),
   status: () => req<Status>('/status'),

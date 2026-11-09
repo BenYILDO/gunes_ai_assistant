@@ -18,6 +18,7 @@ Kişisel asistan: Outlook/Teams'i takip eder, kanban yönetir, hafızası vardı
 - `server/src/health.ts` — son çalışması hata veren işler (`/api/health`, arayüz uyarı bandı, yeniden dene) ve doctor ayar kontrolleri.
 - `server/src/usage.ts` — iş öncelik katmanları: kritik (morning/weekly/prep) yalnızca limit dolunca, normal (tracker) `GUNES_USAGE_PAUSE_AT`'ta, düşük (backfill/wiki/followup/reflection) `GUNES_USAGE_DEFER_AT`'ta ertelenir. Elle başlatılan işler (`manual`) ertelenmez.
 - `server/src/draft.ts` — kart için yanıt taslağı (araçsız, gönderilmez). `server/src/report.ts` — brifing/haftalık rapor Markdown dışa aktarma (`data/wiki/raporlar`, `GUNES_REPORT_DIR`).
+- `server/src/compose.ts` — serbest mail taslağı, 3 aşama: Sonnet (modelThink) soruları çıkarır → Haiku (modelScan, `researcher` ön ayarı: yalnızca okuma) wiki/hafıza/Outlook/Teams'ten yanıtlar → Sonnet yalnızca bulgularla yazar. `POST /api/draft/compose`, arayüzde Header'daki Mail düğmesi. Göndermez, Outlook'a taslak bile yazmaz. Yeni bir MCP yazma aracı eklerseniz `runner.ts` → `GUNES_WRITE_TOOLS`'a ekleyin (test kırılır).
 - `server/src/security.ts` — Host (DNS rebinding) ve Origin (CSRF) koruması; `/api` yazma isteklerinde yabancı Origin reddedilir.
 - `web/` — React + Vite + Tailwind v4 + `motion/react`. Tema `html[data-phase]` (dawn/day/dusk/night) CSS değişkenleriyle; `SunCore.tsx` ana görsel kimlik.
 

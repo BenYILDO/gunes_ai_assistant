@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { BookOpen, Brain, History, Search, LayoutDashboard, MoonStar, Sunrise, MessageCircle, Play, RefreshCw, Settings2, Sparkles } from 'lucide-react';
+import { BookOpen, Brain, History, Mail, Search, LayoutDashboard, MoonStar, Sunrise, MessageCircle, Play, RefreshCw, Settings2, Sparkles } from 'lucide-react';
 import { useState } from 'react';
 import type { Status, Weather } from '../lib/api';
 import { WeatherChip } from './WeatherChip';
@@ -24,6 +24,7 @@ interface Props {
   onEndDay: () => void;
   onSettings: () => void;
   onSearch: () => void;
+  onCompose: () => void;
 }
 
 const TABS: { id: View; label: string; icon: typeof LayoutDashboard }[] = [
@@ -34,7 +35,7 @@ const TABS: { id: View; label: string; icon: typeof LayoutDashboard }[] = [
   { id: 'history', label: 'Geçmiş', icon: History },
 ];
 
-export function Header({ phase, status, view, onView, onRun, onChat, onReplayIntro, showSun, weather, onEndDay, onSettings, onSearch }: Props) {
+export function Header({ phase, status, view, onView, onRun, onChat, onReplayIntro, showSun, weather, onEndDay, onSettings, onSearch, onCompose }: Props) {
   const now = useNow(1000);
   const running = status?.run.running;
   const five = status?.usage?.fiveHour;
@@ -99,6 +100,10 @@ export function Header({ phase, status, view, onView, onRun, onChat, onReplayInt
 
         <Button variant="ghost" size="sm" onClick={onSearch} title="Ara (Ctrl+K): wiki, kart, mail, Teams, hafıza" className="h-9 w-9 !px-0">
           <Search size={16} />
+        </Button>
+
+        <Button variant="ghost" size="sm" onClick={onCompose} title="Mail taslağı: geçmişten bilgi toplayıp yazar (göndermez)" className="h-9 w-9 !px-0">
+          <Mail size={16} />
         </Button>
 
         <WeatherChip weather={weather} />

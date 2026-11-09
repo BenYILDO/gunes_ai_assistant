@@ -30,7 +30,7 @@ test('okuma/taslak listeleri yasak araç içermez', () => {
   for (const t of [...M365_READ_TOOLS, ...M365_DRAFT_TOOLS]) assert.ok(!M365_FORBIDDEN_TOOLS.includes(t), `${t} hem izinli hem yasak`);
 });
 
-const PRESETS: ToolPreset[] = ['collector', 'planner', 'meeting', 'chat', 'notifier', 'none'];
+const PRESETS: ToolPreset[] = ['collector', 'planner', 'meeting', 'researcher', 'chat', 'notifier', 'none'];
 
 test('hiçbir ön ayar yasak bir M365 aracına izin vermez', () => {
   for (const p of PRESETS) {

@@ -13,6 +13,7 @@ import { extractLinks, slugify } from './wiki.js';
 import { createNudge, unseenIds } from './nudges.js';
 import { searchKnowledge } from './search.js';
 import { appendFileSync } from 'node:fs';
+import { request as httpRequest } from 'node:http';
 import { join } from 'node:path';
 import { config, DATA_DIR } from './config.js';
 import { getStore, type Card, type CardStatus, type SourceRef } from './store/index.js';
@@ -444,6 +445,51 @@ server.registerTool(
       );
     } catch {
       return fail('Güneş sunucusuna ulaşılamadı (npm start çalışıyor mu?).');
+    }
+  },
+);
+
+server.registerTool(
+  'compose_mail',
+  {
+    description:
+      "Kullanıcının adına bir MAİL TASLAĞI hazırlar (gönderilmez, Outlook'a da yazılmaz). Sen alıcıyı/amacı/varsa kullanıcının notunu `request` içinde ver; arka planda önce gereken bilgiler soru olarak çıkarılır, wiki + hafıza + kartlar + Outlook/Teams geçmişi taranır, sonra bulgularla taslak yazılır. 2-5 dakika sürer. Kullanıcı bir mail/yanıt yazmak istediğinde ve geçmiş yazışma/wiki bilgisi gerekecekse kullan; tek cümlelik basit bir cevap için kendin yaz. Dönen taslağı kullanıcıya olduğu gibi göster, [KONTROL ET] işaretli yerleri açıkça belirt; kullanıcı istemeden Outlook'ta taslak oluşturma.",
+    inputSchema: {
+      request: z.string().min(5).max(4000).describe('Ne yazılacak: kime, ne için, kullanıcının verdiği önemli noktalar'),
+      tone: z.enum(['kisa', 'resmi', 'samimi']).default('kisa'),
+      note: z.string().max(500).optional().describe('Kullanıcının ek yönlendirmesi'),
+    },
+  },
+  async ({ request, tone, note }) => {
+    const body = JSON.stringify({ request, tone, note });
+    try {
+      // fetch'in 5 dk'lık başlık zaman aşımı var; hat daha uzun sürebilir → node:http (en çok 9 dk)
+      const { status, text } = await new Promise<{ status: number; text: string }>((resolve, reject) => {
+        const req = httpRequest(
+          { host: '127.0.0.1', port: config.port, path: '/api/draft/compose', method: 'POST', headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) } },
+          (res) => {
+            let buf = '';
+            res.setEncoding('utf8');
+            res.on('data', (d) => (buf += d));
+            res.on('end', () => resolve({ status: res.statusCode ?? 0, text: buf }));
+          },
+        );
+        req.setTimeout(9 * 60_000, () => req.destroy(new Error('zaman aşımı')));
+        req.on('error', reject);
+        req.end(body);
+      });
+      let j: { draft?: string; findings?: string; plan?: { questions?: string[] }; error?: string } = {};
+      try {
+        j = JSON.parse(text);
+      } catch {
+        /* gövde JSON değil */
+      }
+      if (status !== 200 || !j.draft) return fail(j.error ?? `Taslak hazırlanamadı (HTTP ${status}).`);
+      return ok(
+        `TASLAK (gönderilmedi):\n${j.draft}\n\n--- Arka plan (kullanıcı sorarsa özetle) ---\nSorulan: ${(j.plan?.questions ?? []).join(' | ')}\nBulgular:\n${(j.findings ?? '').slice(0, 3500)}`,
+      );
+    } catch (e) {
+      return fail(`Güneş sunucusuna ulaşılamadı ya da süre doldu (${(e as Error).message}). npm start çalışıyor mu?`);
     }
   },
 );

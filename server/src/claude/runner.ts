@@ -45,7 +45,27 @@ function mcpConfig() {
   return mcpConfigPath;
 }
 
-export type ToolPreset = 'collector' | 'planner' | 'meeting' | 'chat' | 'notifier' | 'none';
+export type ToolPreset = 'collector' | 'planner' | 'meeting' | 'researcher' | 'chat' | 'notifier' | 'none';
+
+/** Güneş'in panoya/hafızaya/wiki'ye YAZAN araçları — araştırmacı ön ayarında kapalı. */
+export const GUNES_WRITE_TOOLS = [
+  'record_events',
+  'mark_events_processed',
+  'create_card',
+  'update_card',
+  'move_card',
+  'add_suggestion',
+  'write_briefing',
+  'ask_link',
+  'link_thread',
+  'wiki_write',
+  'wiki_edit',
+  'remember',
+  'update_memory',
+  'write_journal',
+];
+/** Araştırmacı (mail taslağı için bilgi toplayan Haiku): yalnızca OKUMA. */
+export const GUNES_READ_TOOLS = ['search_knowledge', 'search_events', 'search_chats', 'wiki_index', 'wiki_read', 'wiki_search', 'recall', 'get_card', 'list_board'];
 
 /** Güneş MCP sunucusunun tüm araçları */
 const GUNES_ALL = 'mcp__gunes';
@@ -54,7 +74,7 @@ export function toolPreset(preset: ToolPreset) {
   const read = M365_READ_TOOLS.map(m365);
   const forbidden = [...M365_FORBIDDEN_TOOLS.map(m365), 'Bash', 'PowerShell', 'Edit', 'Write', 'NotebookEdit'];
   /** Sadece sohbete açık araçlar: ajanlar tarama başlatıp döngüye girmesin, silme önermesin. */
-  const chatOnly = [gunesTool('start_scan'), gunesTool('propose_deletion'), gunesTool('end_day')];
+  const chatOnly = [gunesTool('start_scan'), gunesTool('propose_deletion'), gunesTool('end_day'), gunesTool('compose_mail')];
   /** Sohbette Güneş zaten konuşuyor; kendine dürtme göndermesin */
   const agentOnly = [gunesTool('nudge_user')];
   switch (preset) {
@@ -70,6 +90,20 @@ export function toolPreset(preset: ToolPreset) {
         builtins: '',
         allowed: [...read, GUNES_ALL],
         disallowed: [...forbidden, ...chatOnly, ...M365_DRAFT_TOOLS.map(m365), m365('teams_send_chat_message')],
+      };
+    case 'researcher':
+      // Mail taslağı için geçmişten bilgi toplar: Outlook/Teams/takvim okuma + wiki/hafıza/arama okuma. Hiçbir yazma aracı yok.
+      return {
+        builtins: '',
+        allowed: [...read, ...GUNES_READ_TOOLS.map(gunesTool)],
+        disallowed: [
+          ...forbidden,
+          ...chatOnly,
+          ...agentOnly,
+          ...GUNES_WRITE_TOOLS.map(gunesTool),
+          ...M365_DRAFT_TOOLS.map(m365),
+          m365('teams_send_chat_message'),
+        ],
       };
     case 'planner':
       return {
