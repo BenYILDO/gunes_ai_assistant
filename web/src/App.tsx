@@ -29,6 +29,7 @@ import { SearchPalette } from './components/SearchPalette';
 import { ComposeModal } from './components/ComposeModal';
 import { MeetingsView } from './components/MeetingsView';
 import { LivePill } from './components/LivePill';
+import { CallPrompt } from './components/CallPrompt';
 import { ProblemBanner } from './components/ProblemBanner';
 import { isEcho, parseIntent, stripWake } from './lib/voiceCommands';
 import { NudgePopup } from './components/NudgePopup';
@@ -623,6 +624,7 @@ export default function App() {
 
       <ComposeModal open={composeOpen} onClose={() => setComposeOpen(false)} />
       <LivePill onOpen={() => setView('meetings')} />
+      <CallPrompt phase={phase} onOpenMeetings={() => setView('meetings')} />
 
       <SearchPalette
         open={searchOpen}

@@ -318,6 +318,7 @@ export function MeetingsView({ projects, onOpenWiki }: { projects: WikiPageMeta[
 
       <MeetingDetail
         id={openId}
+        retentionDays={tools.data?.audioRetentionDays ?? 30}
         projects={projectPages}
         onClose={() => setOpenId(null)}
         onChanged={() => {
@@ -334,7 +335,7 @@ export function MeetingsView({ projects, onOpenWiki }: { projects: WikiPageMeta[
 }
 
 // ======================================================================
-function MeetingDetail({ id, projects, onClose, onChanged, onOpenWiki }: { id: string | null; projects: WikiPageMeta[]; onClose: () => void; onChanged: () => void; onOpenWiki: (slug: string) => void }) {
+function MeetingDetail({ id, projects, retentionDays, onClose, onChanged, onOpenWiki }: { id: string | null; projects: WikiPageMeta[]; retentionDays: number; onClose: () => void; onChanged: () => void; onOpenWiki: (slug: string) => void }) {
   const toast = useToast();
   const [m, setM] = useState<MeetingItem | null>(null);
   const [proj, setProj] = useState('');
@@ -441,6 +442,15 @@ function MeetingDetail({ id, projects, onClose, onChanged, onOpenWiki }: { id: s
                   {m.attendees.map((a) => (
                     <Chip key={a}>{a}</Chip>
                   ))}
+                  {m.source !== 'folder' && ['review', 'done', 'error'].includes(m.status) && (
+                    <Chip className={`ml-auto ${m.has_audio ? '' : '!text-ink-faint'}`} title="Ses dosyası hemen silinmez; süre dolunca silinir. Transkript, özet ve wiki sayfası kalır.">
+                      {m.has_audio
+                        ? retentionDays > 0
+                          ? `Ses ${Math.max(0, Math.ceil((Date.parse(m.created_at) + retentionDays * 864e5 - Date.now()) / 864e5))} gün sonra silinir`
+                          : 'Ses silinmez'
+                        : 'Ses dosyası silindi'}
+                    </Chip>
+                  )}
                 </div>
 
                 {/* Tanınmayan sesler: tek tıkla isimlendirme */}
@@ -589,7 +599,7 @@ function MeetingDetail({ id, projects, onClose, onChanged, onOpenWiki }: { id: s
                   >
                     <Trash2 size={12} /> Toplantıyı sil
                   </Button>
-                  {m.status !== 'processing' && m.status !== 'queued' && m.status !== 'recording' && (
+                  {m.status !== 'processing' && m.status !== 'queued' && m.status !== 'recording' && m.has_audio !== false && (
                     <Button size="sm" variant="ghost" onClick={() => void act('re', () => api.meetingReprocess(m.id), 'Yeniden işleniyor.')}>
                       <RotateCw size={12} /> Yeniden işle
                     </Button>

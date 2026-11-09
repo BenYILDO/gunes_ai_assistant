@@ -8,6 +8,9 @@ import { hostGuard, originGuard } from './security.js';
 import { startScheduler } from './scheduler.js';
 import { getStore } from './store/index.js';
 import { recoverStaleMeetings } from './meetings/pipeline.js';
+import { callWatcher } from './meetings/callwatch.js';
+import { startRingLog } from './meetings/ringlog.js';
+import { startAudioRetention } from './meetings/retention.js';
 
 const app = express();
 // DNS rebinding + CSRF koruması (bkz. security.ts)
@@ -43,4 +46,8 @@ app.listen(config.port, '127.0.0.1', () => {
   console.log(`\n☀️  Güneş hazır → http://localhost:${config.port}`);
   console.log(`   Veri deposu: ${store.mode === 'supabase' ? 'Supabase' : 'yerel dosya (data/local-db.json)'}`);
   startScheduler();
+  // Arama algılama (yalnızca Windows), pencere günlüğü ve 30 günlük ses temizliği
+  callWatcher.start();
+  startRingLog();
+  startAudioRetention();
 });

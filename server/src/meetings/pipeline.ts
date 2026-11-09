@@ -157,6 +157,9 @@ async function doProcess(id: string) {
     );
     if (emb.code !== 0 || !existsSync(outFile)) throw new Error(`Konuşmacı vektörü hatası: ${(emb.stderr || emb.stdout).slice(-300)}`);
     const vec = JSON.parse(readFileSync(outFile, 'utf8')) as { vektorler: (number[] | null)[] };
+    // Vektörler biyometrik ara veridir: bellekte tutulur, diske bırakılmaz (profil/grup merkezleri veritabanında)
+    rmSync(outFile, { force: true });
+    rmSync(ivFile, { force: true });
     const vectors: CueVector[] = [];
     idx.forEach(({ i }, k) => {
       const v = vec.vektorler[k];

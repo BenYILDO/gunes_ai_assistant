@@ -11,6 +11,7 @@ import { getStore } from '../store/index.js';
 import type { Meeting } from '../store/types.js';
 import { cancelMeeting, finalizeMeeting, MeetingError, meetingDir, nameSpeaker, processMeeting, relabelSpeaker, removeMeetingFiles, transcriptText } from './pipeline.js';
 import { meetingTools } from './tools.js';
+import { callWatcher } from './callwatch.js';
 
 const wrap =
   (fn: (req: Request, res: Response) => Promise<unknown>) => (req: Request, res: Response, next: NextFunction) =>
@@ -28,7 +29,9 @@ export function insideDir(root: string, file: string) {
 }
 
 /** Listede transkript yok (büyük); ayrıntıda var */
-const light = (m: Meeting) => ({ ...m, transcript: undefined, cues: m.transcript.length });
+const light = (m: Meeting) => ({ ...m, audio_file: undefined, has_audio: Boolean(m.audio_file), transcript: undefined, cues: m.transcript.length });
+/** Ayrıntı: yerel dosya yolu gizlenir, ses var mı bilgisi gider */
+const full = (m: Meeting) => ({ ...m, audio_file: undefined, has_audio: Boolean(m.audio_file) });
 
 function scanFolder(root: string, depth = 2, out: { path: string; name: string; size: number; mtime: string }[] = []) {
   if (!existsSync(root)) return out;
@@ -68,7 +71,7 @@ export function meetingsRouter() {
   // Hat için gereken araçlar var mı (arayüz uyarısı)
   r.get('/tools', wrap(async (_req, res) => {
     const t = meetingTools();
-    res.json({ ok: t.missing.length === 0, missing: t.missing, recordingsDir: config.meetings.recordingsDir || null, threshold: config.meetings.voiceThreshold, storeMode: store.mode });
+    res.json({ ok: t.missing.length === 0, missing: t.missing, recordingsDir: config.meetings.recordingsDir || null, threshold: config.meetings.voiceThreshold, storeMode: store.mode, audioRetentionDays: config.meetings.audioRetentionDays, callWatch: config.meetings.callWatch });
   }));
 
   // Takvim: yakın geçmiş ve gelecek toplantılar (kayıt/canlı dinleme için seçilir)
@@ -79,6 +82,17 @@ export function meetingsRouter() {
       .sort((a, b) => a.occurred_at.localeCompare(b.occurred_at))
       .map((e) => ({ external_id: e.external_id, subject: e.subject ?? e.summary.slice(0, 80), occurred_at: e.occurred_at, ends_at: e.ends_at ?? null, link: e.link, summary: e.summary.slice(0, 240) }));
     res.json(events);
+  }));
+
+  // Arama algılama: Güneş bir arama fark edince arayüz "katılmamı ister misiniz?" penceresini gösterir
+  r.get('/call', wrap(async (_req, res) => res.json(callWatcher.snapshot())));
+  r.post('/call/decline', wrap(async (_req, res) => {
+    callWatcher.decline();
+    res.json(callWatcher.snapshot());
+  }));
+  r.post('/call/joined', wrap(async (_req, res) => {
+    callWatcher.joined();
+    res.json(callWatcher.snapshot());
   }));
 
   r.get('/folder', wrap(async (_req, res) => {
@@ -92,7 +106,7 @@ export function meetingsRouter() {
   r.get('/:id', wrap(async (req, res) => {
     const m = await store.getMeeting(idOf(req));
     if (!m) return void res.status(404).json({ error: 'Toplantı bulunamadı.' });
-    res.json(m);
+    res.json(full(m));
   }));
 
   // Bir kayıt dosyası verilmişse işlemeyi başlatır
@@ -236,15 +250,15 @@ export function meetingsRouter() {
   // Tek tıkla isimlendirme: tanınmayan ses grubuna ad ver (profil oluşur/güçlenir)
   r.post('/:id/name', wrap(async (req, res) => {
     const m = await nameSpeaker(idOf(req), str(req.body?.speakerId, 60), str(req.body?.name, 80));
-    res.json(m);
+    res.json(full(m));
   }));
   r.post('/:id/relabel', wrap(async (req, res) => {
-    res.json(await relabelSpeaker(idOf(req), str(req.body?.from, 80), str(req.body?.to, 80)));
+    res.json(full(await relabelSpeaker(idOf(req), str(req.body?.from, 80), str(req.body?.to, 80))));
   }));
 
   r.post('/:id/finalize', wrap(async (req, res) => {
     const slug = 'projectSlug' in (req.body ?? {}) ? str(req.body.projectSlug, 120) || null : undefined;
-    res.json(await finalizeMeeting(idOf(req), { projectSlug: slug }));
+    res.json(full(await finalizeMeeting(idOf(req), { projectSlug: slug })));
   }));
 
   r.delete('/:id', wrap(async (req, res) => {

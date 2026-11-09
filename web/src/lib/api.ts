@@ -196,12 +196,22 @@ export interface MeetingItem {
   summary: string | null;
   error: string | null;
   created_at: string;
+  /** Ses dosyası hâlâ duruyor mu (saklama süresi dolunca silinir) */
+  has_audio?: boolean;
   /** Yalnızca ayrıntıda */
   transcript?: MeetingCue[];
   /** Yalnızca listede: satır sayısı */
   cues?: number;
 }
-export interface MeetingTools { ok: boolean; missing: string[]; recordingsDir: string | null; threshold: number; storeMode: 'supabase' | 'local' }
+export interface MeetingTools { ok: boolean; missing: string[]; recordingsDir: string | null; threshold: number; storeMode: 'supabase' | 'local'; audioRetentionDays: number; callWatch: boolean }
+export interface CallSnapshot {
+  prompt: boolean;
+  status: 'idle' | 'detecting' | 'pending' | 'declined' | 'joined';
+  app: string | null;
+  since: string | null;
+  planned: boolean;
+  event: { external_id: string; subject: string; occurred_at: string } | null;
+}
 export interface CalendarMeeting { external_id: string; subject: string; occurred_at: string; ends_at: string | null; link: string | null; summary: string }
 export interface FolderFile { path: string; name: string; size: number; mtime: string }
 export interface VoiceProfileItem { id: string; name: string; samples: number; source: 'teams' | 'manual' | 'live'; model: string; updated_at: string }
@@ -236,6 +246,9 @@ export const api = {
   meetings: () => req<MeetingItem[]>('/meetings'),
   meeting: (id: string) => req<MeetingItem>(`/meetings/${id}`),
   meetingTools: () => req<MeetingTools>('/meetings/tools'),
+  callState: () => req<CallSnapshot>('/meetings/call'),
+  callDecline: () => req<CallSnapshot>('/meetings/call/decline', json('POST', {})),
+  callJoined: () => req<CallSnapshot>('/meetings/call/joined', json('POST', {})),
   meetingCalendar: () => req<CalendarMeeting[]>('/meetings/calendar'),
   meetingFolder: () => req<{ enabled: boolean; dir?: string; files: FolderFile[] }>('/meetings/folder'),
   meetingFromFolder: (path: string, extra: { title?: string; event?: string; project?: string } = {}) => req<MeetingItem>('/meetings/from-folder', json('POST', { path, ...extra })),
