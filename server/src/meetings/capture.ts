@@ -5,7 +5,7 @@
  * Hiçbir şey indirilmez ya da dışarı gönderilmez; ses yalnızca data/meetings/<id>/ içinde kalır (30 gün sonra silinir).
  */
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { closeSync, existsSync, openSync, readdirSync, readSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { config, ROOT } from '../config.js';
 import { getStore } from '../store/index.js';
@@ -33,12 +33,13 @@ export function parseHelperLine(line: string, info: NativeInfo): 'ready' | 'done
   if (kind === 'DONE') return 'done';
   if (kind === 'DEV' && (a === 'mikrofon' || a === 'cikis')) info.devices.push({ kind: a, name: msg });
   else if (kind === 'OK') {
-    if (a === 'mic') info.micOk = true;
+    if (a === 'mic' || a?.startsWith('mic-')) info.micOk = true;
     else if (a?.startsWith('sys-')) info.sysOk++;
   } else if (kind === 'ERR') {
-    if (a === 'mic') {
-      info.micOk = false;
-      info.error = `Mikrofon açılamadı (${msg.slice(0, 80)}). Windows → Gizlilik → Mikrofon: masaüstü uygulamalarına izin verin.`;
+    if (a === 'mic' || a?.startsWith('mic-')) {
+      // mic-N: birden çok mikrofon kaydedilir; biri açılamasa da diğeri açıksa sorun yok
+      if (a === 'mic') info.micOk = false;
+      if (a === 'mic' || !info.micOk) info.error = `Mikrofon açılamadı (${msg.slice(0, 80)}). Windows → Gizlilik → Mikrofon: masaüstü uygulamalarına izin verin.`;
     } else if (!info.error) info.error = `Ses çıkışı yakalanamadı (${a}: ${msg.slice(0, 80)}).`;
   }
   return null;
@@ -142,13 +143,48 @@ export async function startNative(meetingId: string, opts: { fromCall?: boolean 
   return info;
 }
 
+/** Konuşma seviyesi: 0,5 sn pencerelerin RMS'inin en yüksek %30'unun ortalaması (sessizlik/gürültü tabanı sayılmaz). */
+export function speechLevel(file: string): number {
+  const win = 8000 * 2; // 0,5 sn, 16 bit
+  const buf = Buffer.alloc(win * 40);
+  const levels: number[] = [];
+  const fd = openSync(file, 'r');
+  try {
+    let n: number;
+    while ((n = readSync(fd, buf, 0, buf.length, null)) > 0) {
+      for (let off = 0; off + win <= n; off += win) {
+        let s = 0;
+        for (let i = off; i < off + win; i += 2) {
+          const v = buf.readInt16LE(i);
+          s += v * v;
+        }
+        levels.push(Math.sqrt(s / (win / 2)) / 32768);
+      }
+    }
+  } finally {
+    closeSync(fd);
+  }
+  if (!levels.length) return 0;
+  levels.sort((a, b) => b - a);
+  const top = levels.slice(0, Math.max(1, Math.ceil(levels.length * 0.3)));
+  return top.reduce((s, x) => s + x, 0) / top.length;
+}
+
+/** Saf: aday mikrofonlardan sizinkini seçer (en yüksek konuşma seviyesi); hepsi sessizse null. */
+export function pickMic(cands: { file: string; level: number }[]): string | null {
+  const best = [...cands].sort((a, b) => b.level - a.level)[0];
+  return best && best.level > 0.003 ? best.file : null;
+}
+
 const rawFiles = (dir: string) => {
   const names = existsSync(dir) ? readdirSync(dir) : [];
   const ok = (n: string) => statSync(join(dir, n)).size > 32000; // en az 1 sn
+  const mics = names.filter((n) => /^mic(-\d+)?\.raw$/.test(n) && ok(n)).map((n) => join(dir, n));
   return {
-    mic: names.includes('mic.raw') && ok('mic.raw') ? join(dir, 'mic.raw') : null,
+    mics,
+    mic: mics[0] ?? null,
     sys: names.filter((n) => /^sys-\d+\.raw$/.test(n) && ok(n)).map((n) => join(dir, n)),
-    all: names.filter((n) => /^(mic|sys-\d+)\.raw$/.test(n)).map((n) => join(dir, n)),
+    all: names.filter((n) => /^(mic(-\d+)?|sys-\d+)\.raw$/.test(n)).map((n) => join(dir, n)),
   };
 };
 
@@ -159,7 +195,9 @@ export async function mergeAndQueue(meetingId: string): Promise<Meeting | null> 
   const f = rawFiles(dir);
   const out = join(dir, 'capture.wav');
   const t = meetingTools();
-  const args = mergeArgs({ mic: f.mic, sys: f.sys }, out);
+  // Birden çok mikrofon kaydedildiyse (kulaklık / sistem mikrofonu) en yüksek konuşma seviyeli olan sizinkidir
+  const mic = f.mics.length > 1 ? (pickMic(f.mics.map((file) => ({ file, level: speechLevel(file) }))) ?? f.mics[0]!) : f.mic;
+  const args = mergeArgs({ mic, sys: f.sys }, out);
   if (!args || !t.ffmpeg) {
     await store.updateMeeting(meetingId, { status: 'error', error: 'Kayıtta ses yok: ne mikrofon ne hoparlör sesi yakalandı.', step: '' });
     return store.getMeeting(meetingId);

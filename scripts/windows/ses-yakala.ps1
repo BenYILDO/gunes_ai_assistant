@@ -192,19 +192,32 @@ public static class Ses {
     var clock = Stopwatch.StartNew();
     var threads = new List<Thread>();
 
-    // Mikrofon: istenen ad parcasi, yoksa varsayilan "iletisim" cihazi, o da yoksa varsayilan cihaz
-    Dev mic = null;
-    if (!string.IsNullOrEmpty(micMatch))
-      foreach (var d in Active(en, 1)) if (d.Name.IndexOf(micMatch, StringComparison.OrdinalIgnoreCase) >= 0) { mic = d; break; }
-    if (mic == null) {
+    // Mikrofon: -Mic ile ad parcasi verildiyse yalnizca o. Verilmediyse HER aktif mikrofon ayri dosyaya kaydedilir (mic-N.raw);
+    // hangisinin sizin mikrofonunuz oldugu kayit bitince (en yuksek konusma seviyesi) secilir. Boylece kulaklik/sistem mikrofonu
+    // arasinda gecis yapsaniz da ayar gerekmez. "Stereo Mix" gibi sistem sesini veren cihazlar atlanir.
+    var mics = new List<Dev>();
+    if (!string.IsNullOrEmpty(micMatch)) {
+      foreach (var d in Active(en, 1)) if (d.Name.IndexOf(micMatch, StringComparison.OrdinalIgnoreCase) >= 0) { mics.Add(d); break; }
+    }
+    if (mics.Count == 0) {
+      foreach (var d in Active(en, 1)) {
+        string nl = d.Name.ToLowerInvariant();
+        if (nl.Contains("stereo mix") || nl.Contains("stereo kar") || nl.Contains("what u hear") || nl.Contains("loopback")) continue;
+        mics.Add(d);
+      }
+    }
+    if (mics.Count == 0) {
       IMMDevice md;
       if (en.GetDefaultAudioEndpoint(1, 2, out md) != 0) en.GetDefaultAudioEndpoint(1, 0, out md);
-      if (md != null) { string id; md.GetId(out id); mic = new Dev { Id = id, Name = FriendlyName(md) }; }
+      if (md != null) { string id; md.GetId(out id); mics.Add(new Dev { Id = id, Name = FriendlyName(md) }); }
     }
-    if (mic != null) {
+    int mi = 0;
+    foreach (var mic in mics) {
+      int k = mi++; var mid = mic.Id;
       Log("DEV|mikrofon|" + mic.Name);
-      var mid = mic.Id; var tm = new Thread(() => Worker("mic", mid, false, Path.Combine(outDir, "mic.raw"), clock)); tm.IsBackground = true; threads.Add(tm);
-    } else Log("ERR|mic|mikrofon cihazi yok");
+      var tm = new Thread(() => Worker("mic-" + k, mid, false, Path.Combine(outDir, "mic-" + k + ".raw"), clock)); tm.IsBackground = true; threads.Add(tm);
+    }
+    if (mi == 0) Log("ERR|mic|mikrofon cihazi yok");
 
     // Hoparlor/kulaklik cikisi: HER aktif cikis cihazi (Teams hangisine caliyorsa o yakalanir)
     int idx = 0;

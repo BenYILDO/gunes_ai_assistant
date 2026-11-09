@@ -4,6 +4,7 @@ import { getWeather } from '../weather.js';
 import { announceNew, unseenIds } from '../nudges.js';
 import { runClaude, type RunnerEvent } from '../claude/runner.js';
 import { getStore } from '../store/index.js';
+import { previousMeetingsContext, weekMeetingsContext } from '../meetings/context.js';
 import { collectorPrompt, meetingFollowupPrompt, meetingPrepPrompt, notifierPrompt, plannerPrompt, reflectionPrompt, weeklyReportPrompt, wikiBuildPrompt } from './prompts.js';
 import { buildBoardContext, buildMemoryContext, buildWikiIndex, ensureSoul, formatEvents } from './soul.js';
 import { exportWiki } from '../wiki.js';
@@ -143,7 +144,12 @@ async function meetingJob(kind: 'prep' | 'followup', eventId?: string) {
   const res = await runClaude({
     prompt:
       kind === 'prep'
-        ? meetingPrepPrompt(m, { memory: await buildMemoryContext(store, { compact: true }), board: await buildBoardContext(store), wiki: await buildWikiIndex(store) })
+        ? meetingPrepPrompt(m, {
+            memory: await buildMemoryContext(store, { compact: true }),
+            board: await buildBoardContext(store),
+            wiki: await buildWikiIndex(store),
+            previous: previousMeetingsContext(await store.listMeetings(200).catch(() => []), m.subject, [], Date.now()),
+          })
         : meetingFollowupPrompt(m, { board: await buildBoardContext(store), wiki: await buildWikiIndex(store) }),
     model: config.modelThink,
     preset: 'meeting',
@@ -173,7 +179,9 @@ async function weekData() {
   const open = cards.filter((c) => c.status !== 'done');
   const today = now.toISOString().slice(0, 10);
   const sec = (title: string, list: typeof cards) => `### ${title} (${list.length})\n${list.slice(0, 15).map(fmt).join('\n') || '- yok'}`;
+  const meetings = await store.listMeetings(200).catch(() => []);
   return [
+    weekMeetingsContext(meetings, monday.getTime()),
     sec('Bu hafta kapananlar', cards.filter((c) => c.status === 'done' && (c.closed_at ?? '') >= since)),
     sec('Bu hafta açılanlar', cards.filter((c) => c.created_at >= since)),
     sec('Bu hafta ilerleyenler (açık)', open.filter((c) => c.updated_at >= since && c.created_at < since)),

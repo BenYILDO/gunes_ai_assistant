@@ -166,7 +166,7 @@ interface MeetingInfo {
   externalId: string;
 }
 
-export function meetingPrepPrompt(m: MeetingInfo, ctx: { memory: string; board: string; wiki: string }) {
+export function meetingPrepPrompt(m: MeetingInfo, ctx: { memory: string; board: string; wiki: string; previous?: string }) {
   return `Sen Güneş'sin. ${who()} birazdan bir toplantıya girecek; ona kısa ve işe yarar bir HAZIRLIK NOTU hazırla.
 
 # TOPLANTI
@@ -182,14 +182,16 @@ ${ctx.board}
 # WİKİ KATALOĞU
 ${ctx.wiki}
 
-# ADIMLAR (hızlı ol, en fazla ~8 araç çağrısı)
+${ctx.previous ? ctx.previous + '\n\n' : ''}# ADIMLAR (hızlı ol, en fazla ~8 araç çağrısı)
 1. read_resource("calendar:///events/${m.externalId}") ile katılımcıları ve gündemi al. Başarısız olursa özetle yetin.
 2. Katılımcılar ve konu için: wiki_search / wiki_read (kişi ve proje sayfaları), search_events (son yazışmalar), list_board (ilgili kartlar). Gerekirse outlook_email_search ile konu başlığında son 1-2 maili bul.
 3. nudge_user ile notu gönder:
    - title: "Toplantı hazırlığı · ${m.start.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', timeZone: config.timezone })} ${m.subject}" (en fazla 70 karakter)
-   - message (markdown, en fazla ~180 kelime):
-     **Amaç** (1 cümle) · **Katılımcılar** (kim, rolü/ilgili işi, son konuşulan) · **İlgili işler** ([kısa id] kart — durum) · **Sorulacaklar / açık konular** (2-4 madde) · gerekiyorsa **Dikkat** (geciken söz, bekleyen cevap)
+   - message (markdown, en fazla ~200 kelime ve 1500 karakter):
+     **Amaç** (1 cümle) · **Geçen sefer** (yukarıda ÖNCEKİ İLGİLİ TOPLANTILAR varsa: alınan kararlar ve kimin neyi üstlendiği; yerine getirilmiş/bekleyen, panodaki kartlarla karşılaştır; yoksa bu bölümü yazma) · **Katılımcılar** (kim, rolü/ilgili işi, son konuşulan) · **İlgili işler** ([kısa id] kart — durum) · **Sorulacaklar / açık konular** (2-4 madde) · gerekiyorsa **Dikkat** (geciken söz, bekleyen cevap)
+   - Bilmediğin ya da emin olmadığın, hazırlığı etkileyen şeyler varsa (gündem belirsiz, hangi kartla ilgili olduğu belli değil, önceki kararın yerine gelip gelmediği) en sonda **❓ Size sorularım** başlığıyla en fazla 3 KISA soru sor; sormak için bir şey yoksa bu başlığı yazma.
    - Son cümle: "Toplantıdan sonra aksiyonları çıkarmamı ister misiniz?"
+   - Bu not toplantıdan en geç 30 dakika önce hazır olmalı; zamanın kısıtlıysa kısa tut.
 4. Kart AÇMA, TAŞIMA, mail gönderme. Sadece hazırlık notu.`;
 }
 
@@ -235,6 +237,7 @@ ${ctx.wiki}
    - headline: tek cümle özet (ör. "Bu hafta 6 iş kapandı; EDI geçişi canlıya hazır.")
    - content (markdown, yöneticiye iletilebilecek sadelikte):
      ## ✅ Tamamlananlar
+     ## 🤝 Toplantı kararları (verilerdeki "Toplantı kararları" bölümünden: hangi toplantıda ne karar verildi, kim neyi üstlendi; toplantı yoksa bu bölümü yazma)
      ## 🔄 Devam edenler (durum + sonraki adım)
      ## ⚠️ Riskler ve gecikenler
      ## 📅 Gelecek hafta

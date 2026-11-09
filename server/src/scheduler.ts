@@ -53,7 +53,7 @@ export async function tick() {
   if (hoursSince >= config.schedule.trackerEveryHours - 0.05 && !(await shouldDefer('tracker'))) void runJob('tracker');
 }
 
-/** Toplantı hazırlığı (başlamadan 5–25 dk önce) ve toplantı sonrası (başlangıçtan 75–180 dk sonra) */
+/** Toplantı hazırlığı (başlamadan ~40 dk önce başlar, 30 dk önce hazır olur; GUNES_MEETING_PREP_LEAD_MIN) ve toplantı sonrası (başlangıçtan 75–180 dk sonra) */
 async function meetingTick(time: string) {
   if (!config.meetingPrep && !config.meetingFollowup) return false;
   const store = getStore();
@@ -63,7 +63,7 @@ async function meetingTick(time: string) {
   const nowMs = Date.now();
   for (const m of meetings) {
     const mins = (new Date(m.occurred_at).getTime() - nowMs) / 60_000;
-    if (config.meetingPrep && time <= config.schedule.workEnd && mins >= 5 && mins <= 25) {
+    if (config.meetingPrep && time <= config.schedule.workEnd && mins >= 5 && mins <= config.meetingPrepLeadMin + 10) {
       const key = `prep:${m.external_id}`;
       if (await store.getState(key)) continue;
       if (await shouldDefer('prep')) continue;

@@ -52,6 +52,8 @@ export const config = {
   lunch: env('GUNES_LUNCH', '12:30-13:30'),
   /** Toplantı hazırlığı (başlamadan ~15 dk önce) ve toplantı sonrası aksiyonlar */
   meetingPrep: env('GUNES_MEETING_PREP', 'on') !== 'off',
+  /** Hazırlık notu toplantıdan en geç bu kadar dk önce hazır olsun (iş bundan ~10 dk önce başlar) */
+  meetingPrepLeadMin: Math.max(10, Number(env('GUNES_MEETING_PREP_LEAD_MIN', '30')) || 30),
   meetingFollowup: env('GUNES_MEETING_FOLLOWUP', 'on') !== 'off',
   /** Haftalık rapor + iç gözlem: gün (1=Pzt … 5=Cuma) ve saat */
   weeklyDay: Number(env('GUNES_WEEKLY_DAY', '5')),
