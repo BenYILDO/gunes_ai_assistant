@@ -10,6 +10,13 @@ import { getUsage, refreshUsage } from './usage.js';
 import { CARD_STATUSES, getStore, MEMORY_KINDS, PRIORITIES, type Card, type MemoryKind, type PendingAction } from './store/index.js';
 import { localDate } from './scheduler.js';
 import { getWeather, setLocation } from './weather.js';
+import { buildFocusPlan, dayKey } from './focus.js';
+import { generateDraft, TONES, type Tone } from './draft.js';
+import { composeMail, composeState } from './compose.js';
+import { meetingsRouter, voicesRouter } from './meetings/api.js';
+import { briefingToMarkdown, reportFilename } from './report.js';
+import { RETRYABLE, runProblems } from './health.js';
+import { searchKnowledge, type SearchType } from './search.js';
 import { listUnseen, markPresence, markSeen } from './nudges.js';
 import { synthesize, TtsError, ttsEnabled, ttsUsage, TTS_VOICES } from './tts.js';
 import { briefingFollowup, closeAppWindow, daySummary, endDay } from './day.js';
@@ -76,6 +83,7 @@ export function apiRouter() {
         usage: await getUsage(),
         models: { chat: config.modelChat, think: config.modelThink, scan: config.modelScan },
         usagePauseAt: config.usagePauseAt,
+        usageDeferAt: config.usageDeferAt,
         tts: { provider: ttsEnabled() ? 'azure' : 'browser', voice: config.ttsVoice, voices: TTS_VOICES, usage: ttsEnabled() ? await ttsUsage() : null },
         labels: { status: STATUS_TR, stats: STAT_TR },
       });
@@ -202,6 +210,77 @@ export function apiRouter() {
       const place = typeof req.body?.place === 'string' ? req.body.place.slice(0, 80) : undefined;
       await setLocation(lat, lon, place, place ? 'manual' : 'browser');
       res.json(await getWeather(true));
+    }),
+  );
+
+  // ---------- Yanıt taslağı (gönderilmez; sadece metin üretir)
+  r.post(
+    '/cards/:id/draft',
+    wrap(async (req, res) => {
+      const card = await store.getCard(p(req));
+      if (!card) return void res.status(404).json({ error: 'Kart bulunamadı.' });
+      const tone = (Object.keys(TONES) as Tone[]).includes(req.body?.tone) ? (req.body.tone as Tone) : 'kisa';
+      const [events, activity, projects] = await Promise.all([
+        store.listEvents({ sinceDays: 120, limit: 5000 }),
+        store.listActivity(card.id),
+        store.listProjects(),
+      ]);
+      // Karta bağlı olaylar + kaynaklarındaki external_id'ler
+      const ext = new Set(card.sources.map((s) => s.external_id).filter(Boolean));
+      const related = events.filter((e) => e.card_id === card.id || ext.has(e.external_id));
+      const draft = await generateDraft({
+        card,
+        projectName: projects.find((x) => x.id === card.project_id)?.name,
+        events: related,
+        activity,
+        tone,
+        note: typeof req.body?.note === 'string' ? req.body.note : undefined,
+        userName: config.userName,
+      });
+      res.json({ draft });
+    }),
+  );
+
+  // ---------- Serbest mail taslağı: Sonnet soru sorar → Haiku geçmişi tarar → Sonnet yazar (gönderilmez)
+  r.post(
+    '/draft/compose',
+    wrap(async (req, res) => {
+      const request = typeof req.body?.request === 'string' ? req.body.request.trim() : '';
+      if (request.length < 5) return void res.status(400).json({ error: 'Ne yazılacağını kısaca anlatın.' });
+      if (composeState.stage !== 'idle') return void res.status(409).json({ error: 'Bir mail taslağı zaten hazırlanıyor.' });
+      const tone = (Object.keys(TONES) as Tone[]).includes(req.body?.tone) ? (req.body.tone as Tone) : 'kisa';
+      const note = typeof req.body?.note === 'string' ? req.body.note : undefined;
+      res.json(await composeMail(store, { request: request.slice(0, 4000), tone, note }));
+    }),
+  );
+  r.get('/draft/compose/progress', (_req, res) => {
+    res.json({ stage: composeState.stage, questions: composeState.questions, elapsed: composeState.startedAt ? Math.round((Date.now() - composeState.startedAt) / 1000) : 0 });
+  });
+
+  // ---------- Odak planı: takvimdeki boşluklara kart önerileri (takvime yazmaz)
+  r.get(
+    '/focus',
+    wrap(async (req, res) => {
+      const now = Date.now();
+      const day = dayKey(now + (req.query.day === 'tomorrow' ? 864e5 : 0), config.timezone);
+      const [cards, events] = await Promise.all([store.listCards(), store.listEvents({ sinceDays: 3, limit: 2000 })]);
+      res.json(
+        buildFocusPlan({ cards, events, day, tz: config.timezone, workStart: config.workStart, workEnd: config.schedule.workEnd, lunch: config.lunch, now }),
+      );
+    }),
+  );
+
+  // ---------- Arama (wiki + kart + olay + hafıza)
+  r.get(
+    '/search',
+    wrap(async (req, res) => {
+      const q = String(req.query.q ?? '').trim();
+      if (q.length < 2) return void res.json([]);
+      const all: SearchType[] = ['wiki', 'card', 'event', 'memory'];
+      const types = String(req.query.types ?? '')
+        .split(',')
+        .filter((t): t is SearchType => (all as string[]).includes(t));
+      res.json(await searchKnowledge(store, q, { types: types.length ? types : undefined, limit: 40 }));
     }),
   );
 
@@ -332,6 +411,18 @@ export function apiRouter() {
     }),
   );
 
+  /** Brifing / haftalık raporu Markdown dosyası olarak indirir */
+  r.get(
+    '/briefings/:id/export',
+    wrap(async (req, res) => {
+      const b = (await store.listBriefings(100)).find((x) => x.id === p(req));
+      if (!b) return void res.status(404).json({ error: 'Rapor bulunamadı.' });
+      res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${reportFilename(b)}"`);
+      res.send(briefingToMarkdown(b));
+    }),
+  );
+
   r.get(
     '/suggestions',
     wrap(async (_req, res) => res.json(await store.listSuggestions('open'))),
@@ -393,13 +484,29 @@ export function apiRouter() {
     wrap(async (req, res) => {
       const k = String(req.params.kind) as JobKind;
       if (!['morning', 'tracker', 'backfill', 'wiki', 'weekly', 'reflection'].includes(k)) return void res.status(400).json({ error: `Bilinmeyen: ${k}` });
-      void runJob(k);
+      void runJob(k, { manual: true });
       res.json({ ok: true, queued: k });
     }),
   );
   r.get(
     '/runs',
     wrap(async (_req, res) => res.json(await store.listRuns(30))),
+  );
+  /** Son çalışması hata veren işler (arayüzde uyarı bandı) */
+  r.get(
+    '/health',
+    wrap(async (_req, res) => res.json({ problems: runProblems(await store.listRuns(60)) })),
+  );
+  r.post(
+    '/runs/:id/retry',
+    wrap(async (req, res) => {
+      const run = (await store.listRuns(100)).find((x) => x.id === p(req));
+      if (!run) return void res.status(404).json({ error: 'Çalışma bulunamadı.' });
+      if (!RETRYABLE.includes(run.kind)) return void res.status(400).json({ error: 'Bu iş tek başına yeniden başlatılamaz.' });
+      if (runState.running) return void res.status(409).json({ error: 'Şu an başka bir çalışma sürüyor.' });
+      void runJob(run.kind as JobKind, { manual: true });
+      res.json({ ok: true, queued: run.kind });
+    }),
   );
 
   // ---------- Hafıza
@@ -462,6 +569,10 @@ export function apiRouter() {
     }),
   );
   r.post('/chat', (req, res, next) => chatHandler(req, res).catch(next));
+
+  // ---------- Toplantılar (kayıt → yerel transkript → konuşmacı tanıma → wiki) ve ses profilleri
+  r.use('/meetings', meetingsRouter());
+  r.use('/voices', voicesRouter());
 
   r.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
     console.error('[güneş] API hatası:', err);

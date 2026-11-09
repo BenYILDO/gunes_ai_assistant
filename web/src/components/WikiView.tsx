@@ -27,18 +27,25 @@ export function WikiView({
   onBuild,
   building,
   onSelect,
+  jumpTo,
 }: {
   pages: WikiPageMeta[];
   onOpenCard: (id: string) => void;
   onBuild: () => void;
   building: boolean;
   onSelect?: (page: { slug: string; title: string }) => void;
+  /** Aramadan gelen sayfaya git (n her seferinde artar) */
+  jumpTo?: { slug: string; n: number } | null;
 }) {
   const [slug, setSlug] = useState<string | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [missing, setMissing] = useState<string | null>(null);
   const [q, setQ] = useState('');
   const [history, setHistory] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (jumpTo) setSlug(jumpTo.slug);
+  }, [jumpTo?.n]);
 
   useEffect(() => {
     if (!slug && pages.length) setSlug(pages.find((p) => p.kind === 'overview')?.slug ?? pages[0].slug);

@@ -4,7 +4,7 @@ import { api, type Card, type CardStatus, type ChatRef, type Nudge, type Pending
 import { buildAgenda } from './lib/agenda';
 import { voiceEnabled as voiceEnabledNow } from './lib/speech';
 import { Approvals } from './components/Approvals';
-import { useLocalFlag, usePoll } from './lib/hooks';
+import { useLocalFlag, useNow, usePoll } from './lib/hooks';
 import { phaseOf, relTime, type Phase } from './lib/time';
 import { BoardWorkspace } from './components/BoardWorkspace';
 import { BriefingPanel } from './components/Briefing';
@@ -25,8 +25,17 @@ import { currentSpeech, setTtsProvider, voiceTest } from './lib/speech';
 import { runVoiceDiag } from './lib/voiceDiag';
 import { getSettings } from './lib/settings';
 import { SettingsPanel } from './components/SettingsPanel';
+import { SearchPalette } from './components/SearchPalette';
+import { ComposeModal } from './components/ComposeModal';
+import { MeetingsView } from './components/MeetingsView';
+import { LivePill } from './components/LivePill';
+import { CallPrompt } from './components/CallPrompt';
+import { ProblemBanner } from './components/ProblemBanner';
 import { isEcho, parseIntent, stripWake } from './lib/voiceCommands';
 import { NudgePopup } from './components/NudgePopup';
+import { Inbox, type InboxProposal } from './components/Inbox';
+import { classifyNudge, hideUntil, inQuietHours, isHidden, loadHidden, pruneHidden, saveHidden, shouldPopup } from './lib/inbox';
+import { useSettings } from './lib/settings';
 import { Sky } from './components/Sky';
 import { SuggestionsPanel } from './components/Suggestions';
 import { useToast } from './components/Toasts';
@@ -114,6 +123,9 @@ export default function App() {
   };
   const [farewell, setFarewell] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [wikiJump, setWikiJump] = useState<{ slug: string; n: number } | null>(null);
   const [voiceSegs, setVoiceSegs] = useState<Segment[] | null>(null);
   const [chatExternal, setChatExternal] = useState<{ id: number; text: string } | null>(null);
   const autoVoiceDone = useRef(false);
@@ -126,16 +138,57 @@ export default function App() {
   const [chatRef, setChatRef] = useState<ChatRef | null>(null);
   const [focusMode, setFocusMode] = useLocalFlag('gunes.boardFocus', false);
 
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setSearchOpen((o) => !o);
+      }
+    };
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, []);
+
   const status = usePoll(api.status, 4000);
   const running = status.data?.run.running ?? null;
   useEffect(() => {
     if (status.data?.tts) setTtsProvider(status.data.tts.provider);
   }, [status.data?.tts?.provider]);
+  const health = usePoll(api.health, 20000);
   const board = usePoll(() => api.board(), 15000);
   const briefing = usePoll(api.briefing, 30000);
   const suggestions = usePoll(api.suggestions, 30000);
   const actions = usePoll(api.actions, 20000);
   const nudges = usePoll(api.nudges, 30000);
+  const meetingList = usePoll(api.meetings, 60000);
+  const callSnap = usePoll(api.callState, 5000);
+  const settings = useSettings();
+  const clock = useNow(30_000);
+  // Gelen kutusu: açılır pencerede "Sonra" denenler burada kalır; sessiz saat / arama sırasında pencere açılmaz, burada birikir
+  const [hidden, setHidden] = useState(loadHidden);
+  const quietHours = settings.quietOn && inQuietHours(clock, settings.quietFrom, settings.quietTo);
+  const inCall = settings.callQuiet && Boolean(callSnap.data && callSnap.data.status !== 'idle');
+  const quiet: 'hours' | 'call' | null = inCall ? 'call' : quietHours ? 'hours' : null;
+  useEffect(() => {
+    const alive = new Set((nudges.data ?? []).map((n) => n.id));
+    setHidden((h) => {
+      const p = pruneHidden(h, alive, Date.now());
+      if (Object.keys(p).length === Object.keys(h).length) return h;
+      saveHidden(p);
+      return p;
+    });
+  }, [nudges.data]);
+  const popupNudges = useMemo(
+    () => (nudges.data ?? []).filter((n) => !isHidden(hidden, n.id, clock.getTime()) && shouldPopup(classifyNudge(n.title, n.message), { hours: quietHours, call: inCall })),
+    [nudges.data, hidden, clock, quietHours, inCall],
+  );
+  const inboxProposals: InboxProposal[] = useMemo(
+    () =>
+      (meetingList.data ?? [])
+        .map((m) => ({ meetingId: m.id, title: m.title, count: (m.proposals ?? []).filter((p) => p.status === 'pending').length }))
+        .filter((x) => x.count > 0),
+    [meetingList.data],
+  );
 
   // Sunucuya "arayüz açık ve görünür" sinyali: kapalıyken Güneş Windows bildirimi gönderir
   useEffect(() => {
@@ -291,7 +344,16 @@ export default function App() {
     setChatOpen(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // "Sonra": açılır pencereden kalkar ama gelen kutusunda (🔔) beklemeye devam eder
   const laterNudge = useCallback((n: Nudge) => {
+    setHidden((h) => {
+      const next = hideUntil(h, n.id);
+      saveHidden(next);
+      return next;
+    });
+  }, []);
+  // "Okundu": gelen kutusundan da kalkar
+  const seenNudge = useCallback((n: Nudge) => {
     nudges.setData((list) => list?.filter((x) => x.id !== n.id) ?? list);
     void api.seenNudge(n.id).catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -464,6 +526,30 @@ export default function App() {
           weather={weather.data}
           onEndDay={() => setFarewell(true)}
           onSettings={() => setSettingsOpen(true)}
+          onSearch={() => setSearchOpen(true)}
+          onCompose={() => setComposeOpen(true)}
+          inbox={
+            <Inbox
+              nudges={nudges.data ?? []}
+              approvals={actions.data?.length ?? 0}
+              proposals={inboxProposals}
+              quiet={quiet}
+              onTalk={talkNudge}
+              onSeen={seenNudge}
+              onApprovals={() => setView('briefing')}
+              onMeetings={() => setView('meetings')}
+            />
+          }
+        />
+
+        <ProblemBanner
+          problems={health.data?.problems ?? []}
+          busy={Boolean(running)}
+          onRetried={() => {
+            void status.refresh();
+            void health.refresh();
+          }}
+          onOpenHistory={() => setView('history')}
         />
 
         {offline && (
@@ -494,6 +580,10 @@ export default function App() {
                   onRun={(k) => void run(k)}
                   onGoBoard={() => setView('board')}
                   onVoice={() => startVoice()}
+                  nudges={nudges.data ?? []}
+                  proposalCount={inboxProposals.reduce((s, p) => s + p.count, 0)}
+                  onTalkNudge={talkNudge}
+                  onGoMeetings={() => setView('meetings')}
                 />
               </motion.div>
             )}
@@ -541,7 +631,18 @@ export default function App() {
             )}
             {view === 'wiki' && (
               <motion.div key="wiki" className="h-full" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.15 } }}>
-                <WikiView pages={wiki.data ?? []} onOpenCard={setOpenCardId} onBuild={() => void run('wiki')} building={running === 'wiki'} onSelect={(p) => setChatRef({ kind: 'wiki', id: p.slug, title: p.title })} />
+                <WikiView jumpTo={wikiJump} pages={wiki.data ?? []} onOpenCard={setOpenCardId} onBuild={() => void run('wiki')} building={running === 'wiki'} onSelect={(p) => setChatRef({ kind: 'wiki', id: p.slug, title: p.title })} />
+              </motion.div>
+            )}
+            {view === 'meetings' && (
+              <motion.div key="meetings" className="h-full" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.15 } }}>
+                <MeetingsView
+                  projects={wiki.data ?? []}
+                  onOpenWiki={(slug) => {
+                    setView('wiki');
+                    setWikiJump((j) => ({ slug, n: (j?.n ?? 0) + 1 }));
+                  }}
+                />
               </motion.div>
             )}
             {view === 'memory' && (
@@ -578,6 +679,21 @@ export default function App() {
         {voiceSegs && <VoiceBriefing key="voice" segments={voiceSegs} phase={phase} onAction={voiceAction} onExit={voiceExit} />}
       </AnimatePresence>
 
+      <ComposeModal open={composeOpen} onClose={() => setComposeOpen(false)} />
+      <LivePill onOpen={() => setView('meetings')} />
+      <CallPrompt phase={phase} onOpenMeetings={() => setView('meetings')} />
+
+      <SearchPalette
+        open={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        onPick={(h) => {
+          if (h.type === 'wiki') (setView('wiki'), setWikiJump((j) => ({ slug: h.id, n: (j?.n ?? 0) + 1 })));
+          else if (h.type === 'card') setOpenCardId(h.id);
+          else if (h.type === 'memory') setView('memory');
+          else if (typeof h.meta?.link === 'string' && h.meta.link) window.open(h.meta.link, '_blank', 'noopener');
+          else toast('Bu kaydın bağlantısı yok.', 'error');
+        }}
+      />
       <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} status={status.data} onVoiceTest={() => void runVoiceTest()} onVoiceDiag={() => void runDiag()} weather={weather.data} onLocationChanged={() => {
         void weather.refresh();
         void today.refresh();
@@ -597,7 +713,7 @@ export default function App() {
         {farewell && <Farewell key="farewell" userName={user ? `${user.name} ${user.title}` : ''} voice={voiceEnabledNow()} onCancel={() => setFarewell(false)} />}
       </AnimatePresence>
 
-      <NudgePopup items={chatOpen ? (nudges.data ?? []).filter((n) => n.id !== focusSession) : (nudges.data ?? [])} phase={phase} onTalk={talkNudge} onLater={laterNudge} />
+      <NudgePopup items={chatOpen ? popupNudges.filter((n) => n.id !== focusSession) : popupNudges} phase={phase} onTalk={talkNudge} onLater={laterNudge} />
 
       <AnimatePresence>
         {openCard && (

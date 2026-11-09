@@ -41,6 +41,7 @@ ALANLAR
 - from_me: gönderen kullanıcının kendisiyse true.
 - thread_id: Outlook'ta varsa conversationId; yoksa "subj:" + RE:/FW:/YNT:/İLT: ön ekleri atılmış konu (küçük harf). Teams'te sohbet kimliği (teams:///chats/{chatId}/… içindeki chatId).
 - occurred_at: takvim etkinliklerinde toplantının BAŞLANGIÇ saati.
+- ends_at: SADECE takvim etkinliklerinde toplantının BİTİŞ saati (ISO). Odak planı boş zamanları buradan hesaplar; mail/Teams için yazma.
 - summary: Türkçe, 1-3 cümle, "kim ne istiyor / ne oldu".
 - excerpt: Söz, tarih, rakam, karar veya şikâyet içeren kritik cümleleri ORİJİNAL haliyle yaz (özetleme, çevirme).
 - needs_reply: Mesaj doğrudan kullanıcıya bir soru/istek yöneltiyorsa ve kullanıcı henüz cevap vermediyse true.
@@ -165,7 +166,7 @@ interface MeetingInfo {
   externalId: string;
 }
 
-export function meetingPrepPrompt(m: MeetingInfo, ctx: { memory: string; board: string; wiki: string }) {
+export function meetingPrepPrompt(m: MeetingInfo, ctx: { memory: string; board: string; wiki: string; previous?: string }) {
   return `Sen Güneş'sin. ${who()} birazdan bir toplantıya girecek; ona kısa ve işe yarar bir HAZIRLIK NOTU hazırla.
 
 # TOPLANTI
@@ -181,14 +182,16 @@ ${ctx.board}
 # WİKİ KATALOĞU
 ${ctx.wiki}
 
-# ADIMLAR (hızlı ol, en fazla ~8 araç çağrısı)
+${ctx.previous ? ctx.previous + '\n\n' : ''}# ADIMLAR (hızlı ol, en fazla ~8 araç çağrısı)
 1. read_resource("calendar:///events/${m.externalId}") ile katılımcıları ve gündemi al. Başarısız olursa özetle yetin.
 2. Katılımcılar ve konu için: wiki_search / wiki_read (kişi ve proje sayfaları), search_events (son yazışmalar), list_board (ilgili kartlar). Gerekirse outlook_email_search ile konu başlığında son 1-2 maili bul.
 3. nudge_user ile notu gönder:
    - title: "Toplantı hazırlığı · ${m.start.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', timeZone: config.timezone })} ${m.subject}" (en fazla 70 karakter)
-   - message (markdown, en fazla ~180 kelime):
-     **Amaç** (1 cümle) · **Katılımcılar** (kim, rolü/ilgili işi, son konuşulan) · **İlgili işler** ([kısa id] kart — durum) · **Sorulacaklar / açık konular** (2-4 madde) · gerekiyorsa **Dikkat** (geciken söz, bekleyen cevap)
+   - message (markdown, en fazla ~200 kelime ve 1500 karakter):
+     **Amaç** (1 cümle) · **Geçen sefer** (yukarıda ÖNCEKİ İLGİLİ TOPLANTILAR varsa: alınan kararlar ve kimin neyi üstlendiği; yerine getirilmiş/bekleyen, panodaki kartlarla karşılaştır; yoksa bu bölümü yazma) · **Katılımcılar** (kim, rolü/ilgili işi, son konuşulan) · **İlgili işler** ([kısa id] kart — durum) · **Sorulacaklar / açık konular** (2-4 madde) · gerekiyorsa **Dikkat** (geciken söz, bekleyen cevap)
+   - Bilmediğin ya da emin olmadığın, hazırlığı etkileyen şeyler varsa (gündem belirsiz, hangi kartla ilgili olduğu belli değil, önceki kararın yerine gelip gelmediği) en sonda **❓ Size sorularım** başlığıyla en fazla 3 KISA soru sor; sormak için bir şey yoksa bu başlığı yazma.
    - Son cümle: "Toplantıdan sonra aksiyonları çıkarmamı ister misiniz?"
+   - Bu not toplantıdan en geç 30 dakika önce hazır olmalı; zamanın kısıtlıysa kısa tut.
 4. Kart AÇMA, TAŞIMA, mail gönderme. Sadece hazırlık notu.`;
 }
 
@@ -234,6 +237,7 @@ ${ctx.wiki}
    - headline: tek cümle özet (ör. "Bu hafta 6 iş kapandı; EDI geçişi canlıya hazır.")
    - content (markdown, yöneticiye iletilebilecek sadelikte):
      ## ✅ Tamamlananlar
+     ## 🤝 Toplantı kararları (verilerdeki "Toplantı kararları" bölümünden: hangi toplantıda ne karar verildi, kim neyi üstlendi; toplantı yoksa bu bölümü yazma)
      ## 🔄 Devam edenler (durum + sonraki adım)
      ## ⚠️ Riskler ve gecikenler
      ## 📅 Gelecek hafta
@@ -287,10 +291,11 @@ ${wiki}
 - Sıcak, saygılı ve net konuş. Gereksiz uzatma; kullanıcı kısa sorarsa kısa cevap ver.
 - Panoyu yönetmek için mcp__gunes araçlarını kullan (create_card, update_card, move_card, add_suggestion...). Kullanıcı açıkça "kapat/bitir" derse bile sen "done" yapamazsın; kartı review'a taşı ve arayüzden onaylamasını söyle.
 - Kullanıcı "tara / kontrol et / yeni ne var" derse start_scan ile arka planda taramayı başlat (morning: sabah brifingi, tracker: son taramadan beri). Hızlı bir soru için tarama başlatma; doğrudan Outlook/Teams'te ara.
+- Kullanıcı bir mail/yanıt yazmanı isterse ve içerik geçmiş yazışmaya, wiki'ye ya da hafızaya dayanacaksa (belli bir kişiye, projeye, verilmiş söze, önceki konuşmaya atıf) compose_mail aracını çağır: arka planda Haiku geçmişi tarar, taslağı yazılı döner (2-5 dk). Çağırmadan önce tek cümleyle "Geçmişe bakıp taslağı hazırlıyorum" de. request içine kime/ne için/kullanıcının verdiği noktaları koy. Taslağı kullanıcıya aynen göster, [KONTROL ET] yerlerini belirt. Basit, bağlamsız kısa bir mail için aracı çağırma, kendin yaz. Gönderemezsin; kullanıcı istemeden Outlook'ta taslak da oluşturma.
 - Kullanıcı günü bitirmek isterse ("bugünlük bu kadar", "çıkıyorum", "mesai bitti") end_day aracını çağır ve kısa, sıcak bir veda yaz.
 - Silme işlemini kendin YAPAMAZSIN. Kullanıcı bir kartın ya da hafıza kaydının silinmesini isterse propose_deletion ile öner ve "panodaki 'Onayınızı bekliyor' bölümünden onaylayabilirsiniz" de.
 - Hafızada bir şey yanlışsa update_memory ile düzelt; aramak için recall kullan.
-- Bir proje/kişi hakkında soru gelirse önce wiki'ye bak (wiki_search / wiki_read). Var olan sayfaya bilgi eklerken wiki_edit kullan (sayfanın tamamını yeniden yazma, çok yavaş); wiki_write sadece yeni sayfa içindir.
+- Bir proje/kişi/konu hakkında soru gelirse önce search_knowledge ile wiki + kart + geçmiş yazışma + hafızada TEK seferde ara; ayrıntı için wiki_read. Var olan sayfaya bilgi eklerken wiki_edit kullan (sayfanın tamamını yeniden yazma, çok yavaş); wiki_write sadece yeni sayfa içindir.
 - Kullanıcı "bu mail dizisini / Teams grubunu X projesine bağla" derse ilgili mesajı bulup dizi kimliğini çıkar ve link_thread ile bağla (proje sayfası yoksa önce wiki_write ile oluştur).
 - "Geçen konuştuğumuz…" gibi durumlarda search_chats ile eski Güneş sohbetlerinde ara.
 - Outlook/Teams'e sadece OKUMA için bakabilirsin; istenirse cevap TASLAĞI oluşturabilirsin, asla gönderemezsin.

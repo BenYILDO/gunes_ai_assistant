@@ -117,6 +117,8 @@ export interface ChatSession { id: string; title: string; updated_at: string }
 export interface ChatMessage { id: string; role: 'user' | 'assistant'; content: string; tools: string[]; created_at: string }
 export interface AgentRun { id: string; kind: string; status: string; started_at: string; finished_at: string | null; error: string | null; stats: Record<string, unknown> }
 
+export interface RunProblem { id: string; kind: string; error: string; hint: string | null; at: string; retryable: boolean }
+
 export interface UsageWindow { utilization: number | null; resetsAt: string | null; status: string }
 export interface Usage {
   status: string;
@@ -167,7 +169,148 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 
 const json = (method: string, body?: unknown): RequestInit => ({ method, body: body ? JSON.stringify(body) : undefined });
 
+// ---------- Toplantılar (kayıt → yerel transkript → konuşmacı tanıma → wiki)
+export interface MeetingSpeaker {
+  id: string;
+  name: string | null;
+  kind: 'known' | 'unknown';
+  cues: number;
+  seconds: number;
+  samples: { b: number; e: number }[];
+}
+export interface MeetingCue { b: number; e: number; text: string; speaker: string | null; score: number | null; cluster: string | null; raw?: string }
+export type ProposalKind = 'create_card' | 'update_card' | 'wiki_meeting_page' | 'wiki_append' | 'remember';
+export interface MeetingProposal { id: string; kind: ProposalKind; title: string; reason: string; status: 'pending' | 'applied' | 'skipped' | 'failed'; payload: Record<string, unknown>; result?: string }
+export interface MeetingAnalysis { ozet: string; konular: string[]; kararlar: string[]; aksiyonlar: { kim: string; ne: string; ne_zaman: string }[] }
+export type MeetingStatus = 'recording' | 'queued' | 'processing' | 'review' | 'done' | 'error';
+export interface MeetingItem {
+  id: string;
+  title: string;
+  source: 'upload' | 'folder' | 'live';
+  status: MeetingStatus;
+  step: string;
+  started_at: string | null;
+  duration_sec: number | null;
+  event_external_id: string | null;
+  attendees: string[];
+  project_slug: string | null;
+  wiki_slug: string | null;
+  speakers: MeetingSpeaker[];
+  summary: string | null;
+  error: string | null;
+  created_at: string;
+  /** Yapılandırılmış özet ve Güneş'in önerileri (migration 0007) */
+  analysis?: MeetingAnalysis | null;
+  proposals?: MeetingProposal[];
+  /** Ses dosyası hâlâ duruyor mu (saklama süresi dolunca silinir) */
+  has_audio?: boolean;
+  /** Yalnızca ayrıntıda */
+  transcript?: MeetingCue[];
+  /** Yalnızca listede: satır sayısı */
+  cues?: number;
+}
+export interface MeetingTools { ok: boolean; missing: string[]; recordingsDir: string | null; threshold: number; storeMode: 'supabase' | 'local'; audioRetentionDays: number; callWatch: boolean; nativeCapture: boolean }
+export interface CallSnapshot {
+  prompt: boolean;
+  status: 'idle' | 'detecting' | 'pending' | 'declined' | 'joined';
+  app: string | null;
+  since: string | null;
+  planned: boolean;
+  event: { external_id: string; subject: string; occurred_at: string } | null;
+  screenshot: boolean;
+  /** Arama şu an çalıyor (henüz cevaplanmadı) */
+  ringing: boolean;
+  /** Windows popup'ı açık: tarayıcı popup'ı gizlenir */
+  nativePopup: boolean;
+  /** Popup'tan Katıl denince dinleme başlatılamadıysa neden */
+  error: string | null;
+  identity: { status: 'running' | 'ok' | 'none' | 'error'; callers: string[]; title: string | null; confidence: 'yuksek' | 'orta' | 'dusuk' | null; note: string | null };
+}
+export interface CalendarMeeting { external_id: string; subject: string; occurred_at: string; ends_at: string | null; link: string | null; summary: string }
+export interface FolderFile { path: string; name: string; size: number; mtime: string }
+export interface VoiceProfileItem { id: string; name: string; samples: number; source: 'teams' | 'manual' | 'live'; model: string; updated_at: string }
+
+export interface FocusPlan {
+  day: string;
+  free_minutes: number;
+  slots: { start: string; end: string; minutes: number }[];
+  items: { card_id: string; title: string; priority: Priority; due_date: string | null; start: string; end: string; minutes: number; reason: string; partial: boolean }[];
+  overflow: { card_id: string; title: string; priority: Priority; due_date: string | null }[];
+  meetings: { title: string; start: string; end: string }[];
+}
+
+export interface SearchHit {
+  type: 'wiki' | 'card' | 'event' | 'memory';
+  id: string;
+  title: string;
+  snippet: string;
+  score: number;
+  date?: string;
+  meta?: Record<string, unknown>;
+}
+
 export const api = {
+  draftReply: (id: string, tone: 'kisa' | 'resmi' | 'samimi', note?: string) => req<{ draft: string }>(`/cards/${id}/draft`, json('POST', { tone, note })),
+  composeMail: (request: string, tone: 'kisa' | 'resmi' | 'samimi', note?: string) =>
+    req<{ draft: string; plan: { recipient: string; purpose: string; questions: string[] }; findings: string; seconds: { plan: number; research: number; write: number } }>(
+      '/draft/compose',
+      json('POST', { request, tone, note }),
+    ),
+  composeProgress: () => req<{ stage: 'idle' | 'plan' | 'research' | 'write'; questions: number; elapsed: number }>('/draft/compose/progress'),
+  meetings: () => req<MeetingItem[]>('/meetings'),
+  meeting: (id: string) => req<MeetingItem>(`/meetings/${id}`),
+  meetingTools: () => req<MeetingTools>('/meetings/tools'),
+  callState: () => req<CallSnapshot>('/meetings/call'),
+  callDecline: () => req<CallSnapshot>('/meetings/call/decline', json('POST', {})),
+  callIdentify: () => req<CallSnapshot>('/meetings/call/identify', json('POST', {})),
+  callJoined: () => req<CallSnapshot>('/meetings/call/joined', json('POST', {})),
+  meetingCalendar: () => req<CalendarMeeting[]>('/meetings/calendar'),
+  meetingFolder: () => req<{ enabled: boolean; dir?: string; files: FolderFile[] }>('/meetings/folder'),
+  meetingFromFolder: (path: string, extra: { title?: string; event?: string; project?: string } = {}) => req<MeetingItem>('/meetings/from-folder', json('POST', { path, ...extra })),
+  meetingLive: (extra: { title?: string; event?: string; project?: string; native?: boolean; fromCall?: boolean } = {}) =>
+    req<MeetingItem & { native?: boolean; nativeError?: string | null }>('/meetings/live', json('POST', extra)),
+  liveStatus: () =>
+    req<{ active: boolean; native?: boolean; meetingId?: string; title?: string; startedAt?: number; micOk?: boolean; sysOk?: number; error?: string | null; stopping?: boolean }>('/meetings/live/status'),
+  meetingFinish: (id: string) => req<MeetingItem>(`/meetings/${id}/finish`, json('POST', {})),
+  meetingReprocess: (id: string) => req<{ ok: boolean }>(`/meetings/${id}/reprocess`, json('POST', {})),
+  meetingCancel: (id: string) => req<{ ok: boolean }>(`/meetings/${id}/cancel`, json('POST', {})),
+  meetingPatch: (id: string, patch: { title?: string; projectSlug?: string | null; attendees?: string[] }) => req<MeetingItem>(`/meetings/${id}`, json('PATCH', patch)),
+  meetingName: (id: string, speakerId: string, name: string) => req<MeetingItem>(`/meetings/${id}/name`, json('POST', { speakerId, name })),
+  meetingRelabel: (id: string, from: string, to: string) => req<MeetingItem>(`/meetings/${id}/relabel`, json('POST', { from, to })),
+  meetingFinalize: (id: string, projectSlug?: string | null) => req<MeetingItem>(`/meetings/${id}/finalize`, json('POST', projectSlug === undefined ? {} : { projectSlug })),
+  meetingAnalyze: (id: string) => req<MeetingItem>(`/meetings/${id}/analyze`, json('POST', {})),
+  proposalApply: (id: string, pid: string) => req<MeetingItem>(`/meetings/${id}/proposals/${pid}/apply`, json('POST', {})),
+  proposalSkip: (id: string, pid: string) => req<MeetingItem>(`/meetings/${id}/proposals/${pid}/skip`, json('POST', {})),
+  proposalApplyAll: (id: string) => req<MeetingItem>(`/meetings/${id}/proposals/apply-all`, json('POST', {})),
+  meetingDelete: (id: string) => req<{ ok: boolean }>(`/meetings/${id}`, json('DELETE')),
+  meetingClipUrl: (id: string, b: number, e: number) => `/api/meetings/${id}/clip?b=${b.toFixed(2)}&e=${e.toFixed(2)}`,
+  meetingTranscriptUrl: (id: string) => `/api/meetings/${id}/transcript.md`,
+  /** Canlı yakalama: ses parçasını yerel sunucuya gönderir (sıralı çağrılmalı) */
+  meetingChunk: async (id: string, blob: Blob) => {
+    const res = await fetch(`/api/meetings/${id}/chunk`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: blob });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `HTTP ${res.status}`);
+  },
+  /** Dosya yükleme (ilerleme için XHR); dosya yalnızca yerel sunucuya gider */
+  meetingUpload: (file: File, meta: { title?: string; event?: string; project?: string }, onProgress?: (pct: number) => void) =>
+    new Promise<MeetingItem>((resolve, reject) => {
+      const q = new URLSearchParams({ name: file.name, ...(meta.title ? { title: meta.title } : {}), ...(meta.event ? { event: meta.event } : {}), ...(meta.project ? { project: meta.project } : {}) });
+      const x = new XMLHttpRequest();
+      x.open('POST', `/api/meetings/upload?${q}`);
+      x.setRequestHeader('Content-Type', 'application/octet-stream');
+      x.upload.onprogress = (e) => e.lengthComputable && onProgress?.(Math.round((e.loaded / e.total) * 100));
+      x.onload = () => {
+        let body: any = {};
+        try { body = JSON.parse(x.responseText); } catch { /* boş gövde */ }
+        if (x.status >= 200 && x.status < 300) resolve(body as MeetingItem);
+        else reject(new Error(body.error ?? `HTTP ${x.status}`));
+      };
+      x.onerror = () => reject(new Error('Yükleme başarısız (sunucuya ulaşılamadı).'));
+      x.send(file);
+    }),
+  voices: () => req<VoiceProfileItem[]>('/voices'),
+  voiceDelete: (id: string) => req<{ ok: boolean }>(`/voices/${id}`, json('DELETE')),
+  focus: (day: 'today' | 'tomorrow') => req<FocusPlan>(`/focus?day=${day}`),
+  search: (q: string) => req<SearchHit[]>(`/search?q=${encodeURIComponent(q)}`),
   status: () => req<Status>('/status'),
   board: (all = false) => req<{ cards: Card[]; projects: Project[] }>(`/board${all ? '?all=1' : ''}`),
   createCard: (c: Partial<Card> & { title: string; project?: string }) => req<Card>('/cards', json('POST', c)),
@@ -200,6 +343,8 @@ export const api = {
   presence: (visible: boolean) => req('/presence', json('POST', { visible })),
   refreshUsage: () => req<Usage | null>('/usage/refresh', json('POST')),
   runs: () => req<AgentRun[]>('/runs'),
+  health: () => req<{ problems: RunProblem[] }>('/health'),
+  retryRun: (id: string) => req(`/runs/${id}/retry`, json('POST')),
   memory: () => req<{ memories: Memory[]; journal: JournalEntry[] }>('/memory'),
   addMemory: (m: Partial<Memory>) => req<Memory>('/memory', json('POST', m)),
   updateMemory: (id: string, m: Partial<Memory>) => req<Memory>(`/memory/${id}`, json('PATCH', m)),

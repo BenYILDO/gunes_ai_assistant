@@ -6,7 +6,9 @@
 import { config } from './config.js';
 import { runJob, runState } from './agents/pipeline.js';
 import { getStore } from './store/index.js';
-import { usageIsHigh } from './usage.js';
+import { shouldDefer } from './usage.js';
+import { CANCELLED } from './focus.js';
+import { isoWeek } from './report.js';
 
 function localParts(d = new Date()) {
   const parts = new Intl.DateTimeFormat('en-GB', {
@@ -37,6 +39,8 @@ export async function tick() {
 
   const lastMorning = await store.getState('last_morning');
   if (localDate(lastMorning) !== now.date) {
+    // Limit doluysa her dakika "ertelendi" kaydı açmamak için çalıştırmadan bekle
+    if (await shouldDefer('morning')) return;
     void runJob('morning');
     return;
   }
@@ -46,22 +50,10 @@ export async function tick() {
 
   const lastCollect = await store.getState('last_collect');
   const hoursSince = lastCollect ? (Date.now() - new Date(lastCollect).getTime()) / 3600_000 : Infinity;
-  if (hoursSince >= config.schedule.trackerEveryHours - 0.05) void runJob('tracker');
+  if (hoursSince >= config.schedule.trackerEveryHours - 0.05 && !(await shouldDefer('tracker'))) void runJob('tracker');
 }
 
-/** ISO hafta anahtarı (ör. 2026-W45) */
-function isoWeek(d = new Date()) {
-  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-  const day = t.getUTCDay() || 7;
-  t.setUTCDate(t.getUTCDate() + 4 - day);
-  const y = t.getUTCFullYear();
-  const w = Math.ceil(((t.getTime() - Date.UTC(y, 0, 1)) / 864e5 + 1) / 7);
-  return `${y}-W${String(w).padStart(2, '0')}`;
-}
-
-const CANCELLED = /^(iptal|canceled|cancelled)\b/i;
-
-/** Toplantı hazırlığı (başlamadan 5–25 dk önce) ve toplantı sonrası (başlangıçtan 75–180 dk sonra) */
+/** Toplantı hazırlığı (başlamadan ~40 dk önce başlar, 30 dk önce hazır olur; GUNES_MEETING_PREP_LEAD_MIN) ve toplantı sonrası (başlangıçtan 75–180 dk sonra) */
 async function meetingTick(time: string) {
   if (!config.meetingPrep && !config.meetingFollowup) return false;
   const store = getStore();
@@ -71,9 +63,10 @@ async function meetingTick(time: string) {
   const nowMs = Date.now();
   for (const m of meetings) {
     const mins = (new Date(m.occurred_at).getTime() - nowMs) / 60_000;
-    if (config.meetingPrep && time <= config.schedule.workEnd && mins >= 5 && mins <= 25) {
+    if (config.meetingPrep && time <= config.schedule.workEnd && mins >= 5 && mins <= config.meetingPrepLeadMin + 10) {
       const key = `prep:${m.external_id}`;
       if (await store.getState(key)) continue;
+      if (await shouldDefer('prep')) continue;
       await store.setState(key, new Date().toISOString());
       void runJob('prep', { eventId: m.id });
       return true;
@@ -81,7 +74,7 @@ async function meetingTick(time: string) {
     if (config.meetingFollowup && mins <= -75 && mins >= -180) {
       const key = `followup:${m.external_id}`;
       if (await store.getState(key)) continue;
-      if (await usageIsHigh()) continue;
+      if (await shouldDefer('followup')) continue;
       await store.setState(key, new Date().toISOString());
       void runJob('followup', { eventId: m.id });
       return true;
@@ -97,11 +90,12 @@ async function weeklyTick(now: { time: string; weekday: number }) {
   const store = getStore();
   const week = isoWeek();
   if ((await store.getState('weekly_week')) !== week) {
+    if (await shouldDefer('weekly')) return false;
     await store.setState('weekly_week', week);
     void runJob('weekly');
     return true;
   }
-  if ((await store.getState('reflection_week')) !== week && !(await usageIsHigh())) {
+  if ((await store.getState('reflection_week')) !== week && !(await shouldDefer('reflection'))) {
     await store.setState('reflection_week', week);
     void runJob('reflection');
     return true;

@@ -58,6 +58,8 @@ export interface EventItem {
   source: 'outlook' | 'teams' | 'calendar' | 'other';
   external_id: string;
   occurred_at: string;
+  /** Takvim etkinliklerinde bitiş saati (yoksa süre bilinmiyor) */
+  ends_at?: string | null;
   from_name: string | null;
   from_address: string | null;
   subject: string | null;
@@ -166,6 +168,92 @@ export type NewCard = Partial<Omit<Card, 'id' | 'created_at' | 'updated_at'>> & 
 export type NewEvent = Omit<EventItem, 'id' | 'created_at' | 'processed' | 'card_id' | 'from_me' | 'thread_id'> &
   Partial<Pick<EventItem, 'processed' | 'card_id' | 'from_me' | 'thread_id'>>;
 
+/** Ses profili: BİYOMETRİK veri (KVKK özel nitelikli). Kişi başı silinebilir olmalı. */
+export interface VoiceProfile {
+  id: string;
+  name: string;
+  embedding: number[];
+  model: string;
+  samples: number;
+  source: 'teams' | 'manual' | 'live';
+  created_at: string;
+  updated_at: string;
+}
+
+export const MEETING_STATUSES = ['recording', 'queued', 'processing', 'review', 'done', 'error'] as const;
+export type MeetingStatus = (typeof MEETING_STATUSES)[number];
+/** Transkript satırı: speaker = tanınan kişi adı, null = tanınmadı (cluster ile bir ses grubuna bağlanır) */
+export interface MeetingCue {
+  b: number;
+  e: number;
+  text: string;
+  speaker: string | null;
+  score: number | null;
+  /** Tanınmayan sesler için grup kimliği (MeetingSpeaker.id) */
+  cluster: string | null;
+  /** Bağlam iyileştirme (Haiku) metni değiştirdiyse özgün konuşma tanıma metni */
+  raw?: string;
+}
+/** Toplantıdaki bir ses: tanınmış kişi ya da isimlendirilmeyi bekleyen tanınmayan ses grubu */
+export interface MeetingSpeaker {
+  id: string;
+  name: string | null;
+  kind: 'known' | 'unknown';
+  cues: number;
+  seconds: number;
+  /** Dinlemek için en uzun birkaç satırın zamanları (sn) */
+  samples: { b: number; e: number }[];
+  /** Grup merkezi: isim verilince profile dönüşür (yalnızca unknown) */
+  embedding?: number[];
+}
+/** Toplantının yapılandırılmış özeti (Sonnet çıktısı) */
+export interface MeetingAnalysis {
+  ozet: string;
+  konular: string[];
+  kararlar: string[];
+  aksiyonlar: { kim: string; ne: string; ne_zaman: string }[];
+}
+export type ProposalKind = 'create_card' | 'update_card' | 'wiki_meeting_page' | 'wiki_append' | 'remember';
+/** Güneş'in önerdiği iş: kullanıcı onaylamadan hiçbir şey yazılmaz */
+export interface MeetingProposal {
+  id: string;
+  kind: ProposalKind;
+  /** Kullanıcıya gösterilen tek satır */
+  title: string;
+  /** Neden önerildi (transkriptten dayanak) */
+  reason: string;
+  status: 'pending' | 'applied' | 'skipped' | 'failed';
+  /** kind'a göre alanlar (bkz. server/src/meetings/proposals.ts) */
+  payload: Record<string, unknown>;
+  /** Uygulandıysa ne yapıldı (ör. "Kart açıldı: [ab12cd34]") */
+  result?: string;
+}
+export interface Meeting {
+  id: string;
+  title: string;
+  source: 'upload' | 'folder' | 'live';
+  status: MeetingStatus;
+  step: string;
+  started_at: string | null;
+  duration_sec: number | null;
+  event_external_id: string | null;
+  attendees: string[];
+  project_slug: string | null;
+  wiki_slug: string | null;
+  audio_file: string | null;
+  transcript: MeetingCue[];
+  speakers: MeetingSpeaker[];
+  summary: string | null;
+  /** Yapılandırılmış özet (özet/konular/kararlar/aksiyonlar); migration 0007 yoksa boş */
+  analysis?: MeetingAnalysis | null;
+  /** Güneş'in önerileri (kart/wiki/hafıza); migration 0007 yoksa boş */
+  proposals?: MeetingProposal[];
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+export type NewMeeting = Partial<Omit<Meeting, 'id' | 'created_at' | 'updated_at'>> & { title: string };
+
 export const WIKI_KINDS = ['project', 'person', 'topic', 'thread', 'overview'] as const;
 export type WikiKind = (typeof WIKI_KINDS)[number];
 export interface WikiPage {
@@ -263,4 +351,15 @@ export interface Store {
 
   getThreadLinks(threadIds: string[]): Promise<ThreadLink[]>;
   upsertThreadLink(l: Omit<ThreadLink, 'created_at'>): Promise<void>;
+
+  listVoiceProfiles(): Promise<VoiceProfile[]>;
+  /** Aynı ad varsa günceller (isim büyük/küçük harf duyarlı) */
+  upsertVoiceProfile(p: Pick<VoiceProfile, 'name' | 'embedding' | 'model' | 'samples' | 'source'>): Promise<VoiceProfile>;
+  deleteVoiceProfile(id: string): Promise<void>;
+
+  listMeetings(limit?: number): Promise<Meeting[]>;
+  getMeeting(id: string): Promise<Meeting | null>;
+  createMeeting(m: NewMeeting): Promise<Meeting>;
+  updateMeeting(id: string, patch: Partial<Meeting>): Promise<Meeting>;
+  deleteMeeting(id: string): Promise<void>;
 }

@@ -67,10 +67,43 @@ export async function refreshUsage() {
   return getUsage();
 }
 
-/** 5 saatlik kullanım eşiği aştıysa true (takip çalışmaları ertelenir). */
-export async function usageIsHigh() {
+async function usageAtLeast(threshold: number) {
   const u = await getUsage();
-  const v = u?.fiveHour?.utilization;
-  const resetPassed = u?.fiveHour?.resetsAt ? new Date(u.fiveHour.resetsAt).getTime() < Date.now() : true;
-  return typeof v === 'number' && v >= config.usagePauseAt && !resetPassed;
+  return exceeds(u, threshold);
+}
+
+/** Saf hesap (test edilebilir): pencere sıfırlanmadıysa ve doluluk eşiği geçtiyse true; limit dolduysa her zaman true. */
+export function exceeds(u: Pick<Usage, 'status' | 'fiveHour'> | null, threshold: number, nowMs = Date.now()) {
+  const w = u?.fiveHour;
+  const resetPassed = w?.resetsAt ? new Date(w.resetsAt).getTime() < nowMs : true;
+  if (resetPassed) return false;
+  if (u?.status === 'rejected' || w?.status === 'rejected') return true;
+  return typeof w?.utilization === 'number' && w.utilization >= threshold;
+}
+
+/**
+ * İş öncelikleri: kritik işler (sabah, haftalık rapor, toplantı hazırlığı) sadece limit tamamen dolunca ertelenir;
+ * takip taraması "usagePauseAt"ta (sohbete yer kalsın); düşük öncelikli işler (geçmiş tarama, wiki kurulumu,
+ * toplantı sonrası, iç gözlem) daha erken, "usageDeferAt"ta ertelenir.
+ */
+export type JobTier = 'critical' | 'normal' | 'low';
+export const JOB_TIER: Record<string, JobTier> = {
+  morning: 'critical',
+  weekly: 'critical',
+  prep: 'critical',
+  tracker: 'normal',
+  followup: 'low',
+  reflection: 'low',
+  backfill: 'low',
+  wiki: 'low',
+};
+
+export function thresholdFor(kind: string) {
+  const tier = JOB_TIER[kind] ?? 'normal';
+  return tier === 'critical' ? 1 : tier === 'normal' ? config.usagePauseAt : Math.min(config.usageDeferAt, config.usagePauseAt);
+}
+
+/** Bu iş şu an Claude kullanımı yüzünden ertelenmeli mi? */
+export async function shouldDefer(kind: string) {
+  return usageAtLeast(thresholdFor(kind));
 }

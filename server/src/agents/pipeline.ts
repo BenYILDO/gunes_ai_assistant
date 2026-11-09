@@ -1,17 +1,21 @@
 import { config } from '../config.js';
-import { usageIsHigh } from '../usage.js';
+import { shouldDefer } from '../usage.js';
 import { getWeather } from '../weather.js';
 import { announceNew, unseenIds } from '../nudges.js';
 import { runClaude, type RunnerEvent } from '../claude/runner.js';
 import { getStore } from '../store/index.js';
+import { previousMeetingsContext, weekMeetingsContext } from '../meetings/context.js';
 import { collectorPrompt, meetingFollowupPrompt, meetingPrepPrompt, notifierPrompt, plannerPrompt, reflectionPrompt, weeklyReportPrompt, wikiBuildPrompt } from './prompts.js';
 import { buildBoardContext, buildMemoryContext, buildWikiIndex, ensureSoul, formatEvents } from './soul.js';
 import { exportWiki } from '../wiki.js';
+import { saveReport } from '../report.js';
 
 export type JobKind = 'morning' | 'tracker' | 'backfill' | 'wiki' | 'prep' | 'followup' | 'weekly' | 'reflection';
 export interface JobOptions {
   /** prep/followup: takvim olayının veritabanı id'si */
   eventId?: string;
+  /** Kullanıcı elle başlattı: kullanım limiti ertelemesi uygulanmaz */
+  manual?: boolean;
 }
 
 /** Arayüzün canlı gösterdiği çalışma durumu. */
@@ -140,7 +144,12 @@ async function meetingJob(kind: 'prep' | 'followup', eventId?: string) {
   const res = await runClaude({
     prompt:
       kind === 'prep'
-        ? meetingPrepPrompt(m, { memory: await buildMemoryContext(store, { compact: true }), board: await buildBoardContext(store), wiki: await buildWikiIndex(store) })
+        ? meetingPrepPrompt(m, {
+            memory: await buildMemoryContext(store, { compact: true }),
+            board: await buildBoardContext(store),
+            wiki: await buildWikiIndex(store),
+            previous: previousMeetingsContext(await store.listMeetings(200).catch(() => []), m.subject, [], Date.now()),
+          })
         : meetingFollowupPrompt(m, { board: await buildBoardContext(store), wiki: await buildWikiIndex(store) }),
     model: config.modelThink,
     preset: 'meeting',
@@ -170,7 +179,9 @@ async function weekData() {
   const open = cards.filter((c) => c.status !== 'done');
   const today = now.toISOString().slice(0, 10);
   const sec = (title: string, list: typeof cards) => `### ${title} (${list.length})\n${list.slice(0, 15).map(fmt).join('\n') || '- yok'}`;
+  const meetings = await store.listMeetings(200).catch(() => []);
   return [
+    weekMeetingsContext(meetings, monday.getTime()),
     sec('Bu hafta kapananlar', cards.filter((c) => c.status === 'done' && (c.closed_at ?? '') >= since)),
     sec('Bu hafta açılanlar', cards.filter((c) => c.created_at >= since)),
     sec('Bu hafta ilerleyenler (açık)', open.filter((c) => c.updated_at >= since && c.created_at < since)),
@@ -196,6 +207,12 @@ async function weeklyReport() {
   });
   log(`Haftalık rapor (${secs(t0)}): ${res.text.split('\n')[0]?.slice(0, 200)}`);
   if (res.isError) throw new Error(res.text.slice(0, 400));
+  // Rapor dosyası (Obsidian / OneDrive) — başarısız olursa iş başarısız sayılmaz
+  const b = await store.latestBriefing('weekly');
+  if (b && Date.now() - new Date(b.created_at).getTime() < 3600_000) {
+    const files = saveReport(b);
+    if (files.length) log(`Rapor kaydedildi: ${files.join(', ')}`);
+  }
 }
 
 async function weeklyReflection() {
@@ -316,6 +333,12 @@ async function execute(kind: JobKind, opts: JobOptions = {}) {
   const startedAt = new Date();
   const nudgesBefore = await unseenIds(store).catch(() => [] as string[]);
   try {
+    if (!opts.manual && (await shouldDefer(kind))) {
+      log('Claude kullanımı yüksek; bu iş sohbete yer kalsın diye ertelendi.');
+      await store.finishRun(run.id, { status: 'skipped', stats: { reason: 'usage' } });
+      runState.lastResult = { kind, status: 'skipped', at: new Date().toISOString(), message: 'Kullanım yüksek, ertelendi' };
+      return;
+    }
     if (kind === 'prep' || kind === 'followup') {
       await meetingJob(kind, opts.eventId);
     } else if (kind === 'weekly') {
@@ -354,12 +377,6 @@ async function execute(kind: JobKind, opts: JobOptions = {}) {
       await plan('backfill');
       await store.setState('backfill_done', startedAt.toISOString());
     } else {
-      if (kind === 'tracker' && (await usageIsHigh())) {
-        log('Claude kullanımı yüksek; takip, sohbete yer kalsın diye ertelendi.');
-        await store.finishRun(run.id, { status: 'skipped', stats: { reason: 'usage' } });
-        runState.lastResult = { kind, status: 'skipped', at: new Date().toISOString(), message: 'Kullanım yüksek, ertelendi' };
-        return;
-      }
       const from = await lastCollect(kind === 'morning' ? 24 : 3);
       await collect(from, startedAt, true);
       await store.setState('last_collect', startedAt.toISOString());

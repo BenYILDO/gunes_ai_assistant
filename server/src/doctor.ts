@@ -4,9 +4,12 @@
 import { execSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { config, hasSupabase, ROOT } from './config.js';
+import { accessSync, constants, mkdirSync } from 'node:fs';
+import { config, DATA_DIR, hasSupabase, M365_FORBIDDEN_TOOLS, ROOT } from './config.js';
+import { configProblems, runProblems } from './health.js';
 import { runClaude } from './claude/runner.js';
 import { getStore } from './store/index.js';
+import { meetingTools } from './meetings/tools.js';
 
 const okMark = (s: string) => console.log(`  ✅ ${s}`);
 const warn = (s: string) => console.log(`  ⚠️  ${s}`);
@@ -47,6 +50,17 @@ if (hasSupabase) {
           bad("Supabase: haftalık rapor türü yok → supabase/migrations/0004_weekly.sql dosyasını SQL Editor'de çalıştırın");
           problems++;
         } else okMark('Supabase bağlantısı ve şema tamam');
+        // 0005: takvim bitiş saati (odak planı) — yoksa Güneş yine çalışır, süreyi 60 dk varsayar
+        const ends = await sb.from('events').select('ends_at').limit(1);
+        if (ends.error) warn("Supabase: 'events.ends_at' yok → odak planı toplantı sürelerini 60 dk varsayar. İsterseniz supabase/migrations/0005_event_end.sql dosyasını SQL Editor'de çalıştırın");
+        // 0006: toplantılar ve ses profilleri (yoksa yalnızca Toplantılar paneli çalışmaz)
+        const mt = await sb.from('meetings').select('id').limit(1);
+        const vp = await sb.from('voice_profiles').select('id').limit(1);
+        if (!mt.error) {
+          const pr = await sb.from('meetings').select('proposals').limit(1);
+          if (pr.error) warn("Supabase: 'meetings.proposals' yok → Güneş'in toplantı sonrası önerileri kaydedilemez. İsterseniz supabase/migrations/0007_meeting_proposals.sql dosyasını SQL Editor'de çalıştırın");
+        }
+        if (mt.error || vp.error) warn("Supabase: 'meetings'/'voice_profiles' yok → Toplantılar paneli çalışmaz. İsterseniz supabase/migrations/0006_meetings_voices.sql dosyasını SQL Editor'de çalıştırın (ses profilleri biyometrik veridir)");
       } catch {
         bad("Supabase: wiki tabloları yok → supabase/migrations/0003_attribution_wiki.sql dosyasını SQL Editor'de çalıştırın");
         problems++;
@@ -85,6 +99,43 @@ if (config.azureSpeechKey) {
   }
 } else warn('Doğal ses ayarlı değil (AZURE_SPEECH_KEY) — tarayıcı sesi kullanılacak');
 
+
+// ---- Ayarlar, veri klasörü, çalışan sunucu ve son hatalar
+{
+  const issues = configProblems(config);
+  issues.length ? issues.forEach((i) => (bad(i), problems++)) : okMark('Zamanlama ve eşik ayarları tutarlı');
+
+  try {
+    mkdirSync(DATA_DIR, { recursive: true });
+    accessSync(DATA_DIR, constants.W_OK);
+    okMark(`Veri klasörü yazılabilir (${DATA_DIR})`);
+  } catch {
+    bad(`Veri klasörüne yazılamıyor: ${DATA_DIR}`);
+    problems++;
+  }
+
+  if (!M365_FORBIDDEN_TOOLS.includes('outlook_send_mail') || !M365_FORBIDDEN_TOOLS.includes('teams_send_channel_message')) {
+    bad('Güvenlik: yasaklı M365 araç listesi daraltılmış (config.ts → M365_FORBIDDEN_TOOLS)');
+    problems++;
+  } else okMark('Güvenlik: gönderme/silme araçları yasak listesinde');
+
+  config.teamsSelfChatId ? okMark('Teams özet sohbeti ayarlı') : warn('GUNES_TEAMS_SELF_CHAT_ID yok — sabah özeti Teams\'e gönderilmeyecek (isteğe bağlı)');
+
+  try {
+    const res = await fetch(`http://127.0.0.1:${config.port}/api/health`, { signal: AbortSignal.timeout(3000) });
+    const h = (await res.json()) as { problems: { kind: string; error: string }[] };
+    okMark(`Güneş sunucusu çalışıyor (http://localhost:${config.port})`);
+    for (const p of h.problems) warn(`Son ${p.kind} çalışması hata verdi: ${p.error.slice(0, 160)}`);
+  } catch {
+    warn(`Güneş sunucusu şu an çalışmıyor (port ${config.port}) — npm start ile başlatın`);
+    try {
+      for (const p of runProblems(await getStore().listRuns(60))) warn(`Son ${p.kind} çalışması hata vermiş: ${p.error.slice(0, 160)}`);
+    } catch {
+      /* depo okunamadıysa yukarıda bildirildi */
+    }
+  }
+}
+
 if (process.argv.includes('--live')) {
   console.log('\n  Canlı test: Claude (Haiku) ile Microsoft 365 connector deneniyor…');
   let tools: string[] = [];
@@ -116,6 +167,14 @@ if (process.argv.includes('--live')) {
     } else okMark(`Microsoft 365 connector: ${server}`);
   }
   res.isError ? (bad(`Claude cevabı: ${res.text.slice(0, 300)}`), problems++) : okMark(`Claude cevabı: ${res.text.trim().slice(0, 200)}`);
+}
+
+// Toplantılar (yerel transkript + konuşmacı tanıma): isteğe bağlı, eksikse yalnızca uyarı
+{
+  const mt = meetingTools();
+  mt.missing.length
+    ? warn(`Toplantılar (yerel transkript) için eksik: ${mt.missing.join(', ')} → .env'de GUNES_WHISPER_DIR'i gösterin (bkz. scripts/whisper/RAPOR.md)`)
+    : okMark('Toplantılar: whisper.cpp, ffmpeg, sherpa-onnx, modeller ve Python hazır');
 }
 
 console.log(problems ? `\n${problems} sorun bulundu.\n` : '\nHer şey hazır görünüyor. ☀️\n');

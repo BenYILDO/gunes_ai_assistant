@@ -1,3 +1,4 @@
+import { DraftBox } from './DraftBox';
 import { motion } from 'motion/react';
 import { ExternalLink, Mail, MessageSquare, Sparkles, Trash2, UserRound, X, Calendar } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -230,6 +231,8 @@ export function CardModal({ card, projects, onClose, onSave, onDelete }: Props) 
               )}
             </div>
           )}
+
+          <DraftBox cardId={card.id} />
 
           {activity.length > 0 && (
             <div>

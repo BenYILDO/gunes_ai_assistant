@@ -208,6 +208,19 @@ export function SettingsPanel({ open, onClose, status, onVoiceTest, onVoiceDiag,
                     <span className={`text-xs ${notif === 'granted' ? 'text-ok' : 'text-ink-faint'}`}>{notif === 'granted' ? 'Açık' : 'Kapalı'}</span>
                   )}
                 </Row>
+                <Row label="Aramadayken sessiz" hint="Bir aramadayken önemli olmayan bildirimler açılır pencere olmaz, gelen kutusunda bekler">
+                  <Toggle on={s.callQuiet} onChange={(v) => setSetting('callQuiet', v)} />
+                </Row>
+                <Row label="Sessiz saatler" hint="Bu aralıkta yalnızca acil/gecikme bildirimleri açılır pencere olur; diğerleri gelen kutusunda (🔔) bekler">
+                  <Toggle on={s.quietOn} onChange={(v) => setSetting('quietOn', v)} />
+                </Row>
+                {s.quietOn && (
+                  <div className="flex items-center gap-2 text-xs text-ink-dim">
+                    <input type="time" value={s.quietFrom} onChange={(e) => setSetting('quietFrom', e.target.value || '12:00')} className="rounded-lg border border-line bg-white/[0.05] px-2 py-1 text-ink" />
+                    <span>–</span>
+                    <input type="time" value={s.quietTo} onChange={(e) => setSetting('quietTo', e.target.value || '13:00')} className="rounded-lg border border-line bg-white/[0.05] px-2 py-1 text-ink" />
+                  </div>
+                )}
               </Section>
 
               {/* ---------------- Bilgi */}

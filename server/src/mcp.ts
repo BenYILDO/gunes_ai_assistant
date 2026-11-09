@@ -11,7 +11,9 @@ import { z } from 'zod';
 import { buildBoardContext, ensureSoul, formatEvents, STATUS_TR } from './agents/soul.js';
 import { extractLinks, slugify } from './wiki.js';
 import { createNudge, unseenIds } from './nudges.js';
+import { searchKnowledge } from './search.js';
 import { appendFileSync } from 'node:fs';
+import { request as httpRequest } from 'node:http';
 import { join } from 'node:path';
 import { config, DATA_DIR } from './config.js';
 import { getStore, type Card, type CardStatus, type SourceRef } from './store/index.js';
@@ -87,7 +89,8 @@ server.registerTool(
           z.object({
             source: z.enum(['outlook', 'teams', 'calendar', 'other']),
             external_id: z.string().describe('Mesajın/etkinliğin connector tarafından verilen kimliği'),
-            occurred_at: z.string().describe('ISO tarih-saat'),
+            occurred_at: z.string().describe('ISO tarih-saat (takvimde BAŞLANGIÇ)'),
+            ends_at: z.string().nullable().optional().describe('Sadece takvim etkinlikleri: BİTİŞ saati, ISO tarih-saat'),
             from_name: z.string().nullable().optional(),
             from_address: z.string().nullable().optional(),
             subject: z.string().nullable().optional(),
@@ -120,6 +123,7 @@ server.registerTool(
         source: e.source,
         external_id: e.external_id,
         occurred_at: e.occurred_at,
+        ...(e.ends_at ? { ends_at: e.ends_at } : {}),
         from_name: e.from_name ?? null,
         from_address: e.from_address ?? null,
         subject: e.subject ?? null,
@@ -165,6 +169,28 @@ server.registerTool(
       ev
         .slice(-40)
         .map((e) => `[${e.id.slice(0, 8)}] ${e.occurred_at.slice(0, 10)} ${e.from_name ?? ''}: ${e.subject ?? ''} — ${e.summary}`)
+        .join('\n'),
+    );
+  },
+);
+
+server.registerTool(
+  'search_knowledge',
+  {
+    description:
+      'Wiki sayfaları, kartlar, geçmiş olaylar (mail/Teams/takvim) ve hafızada TEK seferde arar; en alakalıdan başlayarak sıralar. Bir kişi/proje/konu hakkında bilgi toplarken ilk bunu kullan.',
+    inputSchema: {
+      query: z.string().min(2),
+      types: z.array(z.enum(['wiki', 'card', 'event', 'memory'])).optional().describe('Boşsa hepsi'),
+      limit: z.number().int().min(1).max(30).default(12),
+    },
+  },
+  async ({ query, types, limit }) => {
+    const hits = await searchKnowledge(store, query, { types, limit });
+    if (!hits.length) return ok('Eşleşme yok.');
+    return ok(
+      hits
+        .map((h) => `[${h.type}:${h.type === 'wiki' ? h.id : h.id.slice(0, 8)}] ${h.title}${h.date ? ` (${h.date.slice(0, 10)})` : ''}\n  ${h.snippet}`)
         .join('\n'),
     );
   },
@@ -363,7 +389,7 @@ server.registerTool(
       "Kullanıcıya KENDİLİĞİNDEN seslenir: yeni bir sohbet başlatır ve ekranda pop-up/Windows bildirimi olarak görünür. SADECE somut ve eyleme dönük bir gelişme varsa kullan (örn. beklenen dönüş geldi, bir iş ilerletilebilir, söz verilen tarih yaklaştı). Mesaj kısa, sıcak ve bir soru ile bitsin: 'Bu işi ilerletelim mi?', 'Bir cevap taslağı hazırlayayım mı?'. Bir çalışmada EN FAZLA 2.",
     inputSchema: {
       title: z.string().max(70).describe('Bildirim başlığı, örn: "Bahadır Bey dönüş yaptı"'),
-      message: z.string().max(700).describe('Sohbetin ilk mesajı (markdown); ilgili kartın kısa id’sini [abcd1234] biçiminde yaz'),
+      message: z.string().max(1600).describe('Sohbetin ilk mesajı (markdown); ilgili kartın kısa id’sini [abcd1234] biçiminde yaz'),
     },
   },
   async ({ title, message }) => {
@@ -419,6 +445,51 @@ server.registerTool(
       );
     } catch {
       return fail('Güneş sunucusuna ulaşılamadı (npm start çalışıyor mu?).');
+    }
+  },
+);
+
+server.registerTool(
+  'compose_mail',
+  {
+    description:
+      "Kullanıcının adına bir MAİL TASLAĞI hazırlar (gönderilmez, Outlook'a da yazılmaz). Sen alıcıyı/amacı/varsa kullanıcının notunu `request` içinde ver; arka planda önce gereken bilgiler soru olarak çıkarılır, wiki + hafıza + kartlar + Outlook/Teams geçmişi taranır, sonra bulgularla taslak yazılır. 2-5 dakika sürer. Kullanıcı bir mail/yanıt yazmak istediğinde ve geçmiş yazışma/wiki bilgisi gerekecekse kullan; tek cümlelik basit bir cevap için kendin yaz. Dönen taslağı kullanıcıya olduğu gibi göster, [KONTROL ET] işaretli yerleri açıkça belirt; kullanıcı istemeden Outlook'ta taslak oluşturma.",
+    inputSchema: {
+      request: z.string().min(5).max(4000).describe('Ne yazılacak: kime, ne için, kullanıcının verdiği önemli noktalar'),
+      tone: z.enum(['kisa', 'resmi', 'samimi']).default('kisa'),
+      note: z.string().max(500).optional().describe('Kullanıcının ek yönlendirmesi'),
+    },
+  },
+  async ({ request, tone, note }) => {
+    const body = JSON.stringify({ request, tone, note });
+    try {
+      // fetch'in 5 dk'lık başlık zaman aşımı var; hat daha uzun sürebilir → node:http (en çok 9 dk)
+      const { status, text } = await new Promise<{ status: number; text: string }>((resolve, reject) => {
+        const req = httpRequest(
+          { host: '127.0.0.1', port: config.port, path: '/api/draft/compose', method: 'POST', headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) } },
+          (res) => {
+            let buf = '';
+            res.setEncoding('utf8');
+            res.on('data', (d) => (buf += d));
+            res.on('end', () => resolve({ status: res.statusCode ?? 0, text: buf }));
+          },
+        );
+        req.setTimeout(9 * 60_000, () => req.destroy(new Error('zaman aşımı')));
+        req.on('error', reject);
+        req.end(body);
+      });
+      let j: { draft?: string; findings?: string; plan?: { questions?: string[] }; error?: string } = {};
+      try {
+        j = JSON.parse(text);
+      } catch {
+        /* gövde JSON değil */
+      }
+      if (status !== 200 || !j.draft) return fail(j.error ?? `Taslak hazırlanamadı (HTTP ${status}).`);
+      return ok(
+        `TASLAK (gönderilmedi):\n${j.draft}\n\n--- Arka plan (kullanıcı sorarsa özetle) ---\nSorulan: ${(j.plan?.questions ?? []).join(' | ')}\nBulgular:\n${(j.findings ?? '').slice(0, 3500)}`,
+      );
+    } catch (e) {
+      return fail(`Güneş sunucusuna ulaşılamadı ya da süre doldu (${(e as Error).message}). npm start çalışıyor mu?`);
     }
   },
 );

@@ -2,9 +2,11 @@ import { animate, motion, useMotionValue, useTransform } from 'motion/react';
 import { ArrowRight, CalendarCheck, CalendarClock, Clock, Flame, Hourglass, Mail, Sunrise, Sunset, Umbrella, Users, Volume2, Zap } from 'lucide-react';
 import { useEffect, useMemo } from 'react';
 import type { AgendaItem } from '../lib/agenda';
-import type { Briefing, PendingAction, Status, Suggestion, Today, Weather } from '../lib/api';
+import type { Briefing, Nudge, PendingAction, Status, Suggestion, Today, Weather } from '../lib/api';
+import { NextUp } from './NextUp';
 import { fmtTime, greetingOf, moodLine, relTime, type Phase } from '../lib/time';
 import { Approvals } from './Approvals';
+import { FocusPanel } from './FocusPanel';
 import { Markdown } from './Markdown';
 import { SuggestionsPanel } from './Suggestions';
 import { SunCore } from './SunCore';
@@ -65,6 +67,11 @@ interface Props {
   onRun: (k: 'morning' | 'backfill') => void;
   onGoBoard: () => void;
   onVoice: () => void;
+  /** Gelen kutusundaki (okunmamış) Güneş mesajları: hazırlık notu buradan bulunur */
+  nudges: Nudge[];
+  proposalCount: number;
+  onTalkNudge: (n: Nudge) => void;
+  onGoMeetings: () => void;
 }
 
 
@@ -168,6 +175,8 @@ export function BriefingView(p: Props) {
         </div>
       </motion.section>
 
+      <NextUp today={today} nudges={p.nudges} approvals={p.actions.length} proposals={p.proposalCount} onTalk={p.onTalkNudge} onApprovals={() => document.getElementById('onay-paneli')?.scrollIntoView({ behavior: 'smooth' })} onMeetings={p.onGoMeetings} />
+
       {/* Sayılar */}
       {briefing && (
         <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -245,6 +254,10 @@ export function BriefingView(p: Props) {
             </Panel>
           </motion.div>
 
+          <motion.div {...rise(6)}>
+            <FocusPanel onOpenCard={p.onOpenCard} />
+          </motion.div>
+
           {/* Brifing bölümleri */}
           {!briefing ? (
             <Panel className="p-6">
@@ -278,7 +291,9 @@ export function BriefingView(p: Props) {
 
         {/* Sağ sütun */}
         <div className="space-y-4">
-          <Approvals items={p.actions} onResolve={p.onResolve} />
+          <div id="onay-paneli">
+            <Approvals items={p.actions} onResolve={p.onResolve} />
+          </div>
           <SuggestionsPanel items={p.suggestions} onAct={p.onAct} onOpenCard={p.onOpenCard} />
           {p.weekly && Date.now() - new Date(p.weekly.created_at).getTime() < 7 * 864e5 && (
             <motion.div {...rise(7)}>

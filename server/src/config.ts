@@ -16,7 +16,8 @@ const list = (k: string, d = '') =>
     .map((s) => s.trim())
     .filter(Boolean);
 
-export const DATA_DIR = join(ROOT, 'data');
+/** Veri klasörü; testler GUNES_DATA_DIR ile geçici klasör kullanır. */
+export const DATA_DIR = process.env.GUNES_DATA_DIR?.trim() ? resolve(process.env.GUNES_DATA_DIR.trim()) : join(ROOT, 'data');
 if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
 
 export const config = {
@@ -46,18 +47,27 @@ export const config = {
     /** 1=Pazartesi … 7=Pazar */
     workDays: list('GUNES_WORK_DAYS', '1,2,3,4,5').map(Number),
   },
+  /** Odak planı: mesai başlangıcı ve öğle arası (boş bırakılırsa öğle arası yok), örn. 12:30-13:30 */
+  workStart: env('GUNES_WORK_START', '09:00'),
+  lunch: env('GUNES_LUNCH', '12:30-13:30'),
   /** Toplantı hazırlığı (başlamadan ~15 dk önce) ve toplantı sonrası aksiyonlar */
   meetingPrep: env('GUNES_MEETING_PREP', 'on') !== 'off',
+  /** Hazırlık notu toplantıdan en geç bu kadar dk önce hazır olsun (iş bundan ~10 dk önce başlar) */
+  meetingPrepLeadMin: Math.max(10, Number(env('GUNES_MEETING_PREP_LEAD_MIN', '30')) || 30),
   meetingFollowup: env('GUNES_MEETING_FOLLOWUP', 'on') !== 'off',
   /** Haftalık rapor + iç gözlem: gün (1=Pzt … 5=Cuma) ve saat */
   weeklyDay: Number(env('GUNES_WEEKLY_DAY', '5')),
   weeklyTime: env('GUNES_WEEKLY_TIME', '16:30'),
+  /** Haftalık rapor ayrıca bu klasöre de yazılır (ör. OneDrive yolu); boşsa sadece data/wiki/raporlar */
+  reportDir: env('GUNES_REPORT_DIR'),
   backfillDays: Number(env('GUNES_BACKFILL_DAYS', '45')),
   backfillChunkDays: Number(env('GUNES_BACKFILL_CHUNK_DAYS', '7')),
   /** Geçmiş taramasında aynı anda çalışan toplayıcı sayısı (sadece Supabase modunda) */
   backfillParallel: Number(env('GUNES_BACKFILL_PARALLEL', '3')),
   /** 5 saatlik kullanım bu oranı geçerse 2 saatlik takip ertelenir (sohbete yer kalsın) */
   usagePauseAt: Number(env('GUNES_USAGE_PAUSE_AT', '0.85')),
+  /** Düşük öncelikli işler (geçmiş tarama, wiki, toplantı sonrası, iç gözlem) bu oranda ertelenir */
+  usageDeferAt: Number(env('GUNES_USAGE_DEFER_AT', '0.70')),
 
   /** Doğal ses (Azure Speech F0, ücretsiz): portal.azure.com → Speech service → Keys and Endpoint */
   azureSpeechKey: env('AZURE_SPEECH_KEY'),
@@ -67,6 +77,45 @@ export const config = {
   ttsPitch: env('GUNES_TTS_PITCH', '0%'),
   /** Ücretsiz kota 500 bin; güvenlik payıyla bu sınırda tarayıcı sesine dönülür */
   ttsMonthlyLimit: Number(env('GUNES_TTS_MONTHLY_LIMIT', '450000')),
+
+  /**
+   * Toplantı kaydı → yerel transkript + konuşmacı tanıma (bkz. server/src/meetings/, scripts/whisper/RAPOR.md).
+   * Her şey bu bilgisayarda çalışır: whisper.cpp, ffmpeg, sherpa-onnx (embedding) ve Python (yalnızca standart kütüphane).
+   */
+  meetings: {
+    /** whisper-cli.exe, ffmpeg.exe, sherpa-onnx-c-api.dll ve model dosyalarının (alt klasörler dahil) bulunduğu kök */
+    toolsDir: env('GUNES_WHISPER_DIR', join(process.env.USERPROFILE ?? process.env.HOME ?? '.', 'whisper-cpp')),
+    whisperModel: env('GUNES_WHISPER_MODEL', 'ggml-large-v3-turbo-q5_0.bin'),
+    vadModel: env('GUNES_WHISPER_VAD', 'ggml-silero-v6.2.0.bin'),
+    /** Konuşmacı vektörü modeli (TitaNet small: ölçümlerde en iyi) */
+    embeddingModel: env('GUNES_EMBEDDING_MODEL', 'nemo_en_titanet_small.onnx'),
+    python: env('GUNES_PYTHON', 'python'),
+    threads: Number(env('GUNES_WHISPER_THREADS', '8')),
+    /** Bu benzerliğin altındaki ses "tanınmadı" sayılır (iki toplantıda ölçüldü: 0,40-0,45 en dengeli) */
+    voiceThreshold: Number(env('GUNES_VOICE_THRESHOLD', '0.40')),
+    /** Transkript bağlam iyileştirme (Haiku): yanlış duyulmuş özel isim/terimleri bağlamla düzeltir; rakamlara dokunmaz, özgün metin saklanır */
+    refine: env('GUNES_REFINE', 'on') !== 'off',
+    /** Transkript hazır olunca Güneş özet çıkarır ve kart/wiki/hafıza ÖNERİLERİ sunar (onaysız hiçbir şey yazılmaz) */
+    autoAnalyze: env('GUNES_AUTO_ANALYZE', 'on') !== 'off',
+    /** Ses dosyası (özgün kayıt + wav) bu kadar gün sonra silinir; transkript, özet ve wiki kalır. 0 = hiç silme */
+    audioRetentionDays: Number(env('GUNES_AUDIO_RETENTION_DAYS', '30')),
+    /** Canlı dinleme sesi tarayıcı yerine Güneş sunucusunun kendisi yakalar (ekran paylaşımı/izin yok). off = eski tarayıcı yöntemi */
+    nativeCapture: env('GUNES_NATIVE_CAPTURE', 'on') !== 'off',
+    /** Mikrofon cihazı adından bir parça (boşsa Windows'un varsayılan iletişim mikrofonu) */
+    micDevice: env('GUNES_MIC_DEVICE'),
+    /** Arama algılama: Windows'un mikrofon kullanım kaydını izler; arama başlayınca Güneş "katılmamı ister misiniz?" diye sorar */
+    callWatch: env('GUNES_CALL_WATCH', 'on') !== 'off',
+    /** Arama algılanınca Windows'ta kendi başına çıkan "katılmamı ister misiniz?" penceresi (Güneş penceresi kapalı/arkada olsa da görünür). off = yalnızca tarayıcı popup'ı */
+    callPopup: env('GUNES_CALL_POPUP', 'on') !== 'off',
+    /** Takvimdeki toplantıdan bu kadar saniye önce (aramanın çalmasını beklemeden) "katılayım mı?" diye sorar. 0 = kapalı */
+    preCallLeadSec: Math.max(0, Number(env('GUNES_PRECALL_LEAD_SEC', '60')) || 0),
+    /** "Katıl" denince arama penceresinin görüntüsü alınıp Claude'a verilerek arayanın adı okunur (görüntü saklanmaz). off = kapalı */
+    callScreenshot: env('GUNES_CALL_SCREENSHOT', 'on') !== 'off',
+    /** Hangi uygulamaların mikrofon kullanımı "arama" sayılır (tarayıcılar Güneş'in kendi sesli komutuyla karışmasın diye yok) */
+    callApps: list('GUNES_CALL_APPS', 'msteams,zoom,webex,skype,slack'),
+    /** Panelde "klasörden seç" için taranan klasör (ör. OneDrive Toplantılar); boşsa kapalı */
+    recordingsDir: env('GUNES_RECORDINGS_DIR'),
+  },
 
   vipPeople: list('GUNES_VIP_PEOPLE'),
   ignoreSenders: list('GUNES_IGNORE', 'noreply,no-reply,newsletter,bulten,notification,bildirim'),

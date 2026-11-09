@@ -10,10 +10,16 @@ export interface Settings {
   introMode: 'always' | 'daily' | 'off';
   /** Açılışta tarayıcı konumunu otomatik kullan (elle şehir seçilince kapanır) */
   autoLocation: boolean;
+  /** Sessiz saatler: bu aralıkta yalnızca önemli (acil/gecikme) bildirimler açılır pencere olur; diğerleri gelen kutusunda bekler */
+  quietOn: boolean;
+  quietFrom: string;
+  quietTo: string;
+  /** Bir aramadayken (mikrofon açık) önemli olmayan bildirimler açılır pencere olmaz */
+  callQuiet: boolean;
 }
 
 const KEY = 'gunes.settings';
-const DEFAULTS: Settings = { speechRate: 1.12, autoVoice: true, introMode: 'always', autoLocation: true };
+const DEFAULTS: Settings = { speechRate: 1.12, autoVoice: true, introMode: 'always', autoLocation: true, quietOn: false, quietFrom: '12:00', quietTo: '13:00', callQuiet: true };
 
 export function getSettings(): Settings {
   try {

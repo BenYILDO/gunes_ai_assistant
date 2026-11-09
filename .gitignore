@@ -11,3 +11,8 @@ Thumbs.db
 
 # Tanıtım videosu seslendirme çıktısı
 seslendirme/
+
+# Whisper deneyleri: musteri toplanti kaydi/transkriptleri repoya girmez
+scripts/whisper/sonuc/
+scripts/whisper/__pycache__/
+toplant*_test/

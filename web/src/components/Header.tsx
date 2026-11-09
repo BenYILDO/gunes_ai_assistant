@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { BookOpen, Brain, History, LayoutDashboard, MoonStar, Sunrise, MessageCircle, Play, RefreshCw, Settings2, Sparkles } from 'lucide-react';
-import { useState } from 'react';
+import { BookOpen, Brain, Headphones, History, Mail, Search, LayoutDashboard, MoonStar, Sunrise, MessageCircle, Play, RefreshCw, Settings2, Sparkles } from 'lucide-react';
+import type { ReactNode } from 'react';
 import type { Status, Weather } from '../lib/api';
 import { WeatherChip } from './WeatherChip';
 import { useNow } from '../lib/hooks';
@@ -9,7 +9,7 @@ import { SunCore } from './SunCore';
 import { Button } from './ui';
 import { MicButton } from './MicButton';
 
-export type View = 'briefing' | 'board' | 'wiki' | 'memory' | 'history';
+export type View = 'briefing' | 'board' | 'wiki' | 'meetings' | 'memory' | 'history';
 
 interface Props {
   phase: Phase;
@@ -23,17 +23,22 @@ interface Props {
   weather: Weather | null;
   onEndDay: () => void;
   onSettings: () => void;
+  onSearch: () => void;
+  onCompose: () => void;
+  /** Gelen kutusu düğmesi (🔔) */
+  inbox?: ReactNode;
 }
 
 const TABS: { id: View; label: string; icon: typeof LayoutDashboard }[] = [
-  { id: 'briefing', label: 'Brifing', icon: Sunrise },
+  { id: 'briefing', label: 'Bugün', icon: Sunrise },
   { id: 'board', label: 'Pano', icon: LayoutDashboard },
   { id: 'wiki', label: 'Wiki', icon: BookOpen },
+  { id: 'meetings', label: 'Toplantılar', icon: Headphones },
   { id: 'memory', label: 'Hafıza', icon: Brain },
   { id: 'history', label: 'Geçmiş', icon: History },
 ];
 
-export function Header({ phase, status, view, onView, onRun, onChat, onReplayIntro, showSun, weather, onEndDay, onSettings }: Props) {
+export function Header({ phase, status, view, onView, onRun, onChat, onReplayIntro, showSun, weather, onEndDay, onSettings, onSearch, onCompose, inbox }: Props) {
   const now = useNow(1000);
   const running = status?.run.running;
   const five = status?.usage?.fiveHour;
@@ -47,28 +52,30 @@ export function Header({ phase, status, view, onView, onRun, onChat, onReplayInt
   const date = now.toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' });
 
   return (
-    <header className="relative z-20 flex items-center gap-4 px-6 pb-3 pt-4">
+    <header className="relative z-20 flex flex-wrap items-center gap-x-4 gap-y-2 px-6 pb-3 pt-4">
       <button onClick={onReplayIntro} title="Karşılamayı tekrar oynat" className="relative shrink-0">
         {showSun ? <SunCore size={58} phase={phase} busy={Boolean(running)} layoutId="gunes-sun" /> : <div style={{ width: 58, height: 58 }} />}
       </button>
 
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1 min-[1800px]:flex-none">
         <motion.div
-          className="whitespace-nowrap font-display text-lg font-semibold leading-tight"
+          className="truncate whitespace-nowrap font-display text-lg font-semibold leading-tight"
           initial={{ opacity: 0, x: -10 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.2 }}
         >
           {greetingOf(now)}, <span className="accent-text">{user ? `${user.name} ${user.title}` : '…'}</span>
         </motion.div>
-        <div className="mt-0.5 flex items-center gap-2 whitespace-nowrap text-xs text-ink-faint">
-          <span className="capitalize">{date}</span>
+        <div className="mt-0.5 flex min-w-0 items-center gap-2 whitespace-nowrap text-xs text-ink-faint">
+          <span className="shrink-0 capitalize">{date}</span>
           <span>·</span>
-          <StatusLine status={status} />
+          <span className="min-w-0 truncate"><StatusLine status={status} /></span>
         </div>
       </div>
 
-      <nav className="mx-auto hidden items-center gap-1 rounded-2xl border border-line bg-white/[0.04] p-1 backdrop-blur md:flex">
+      {/* Sekmeler: dar pencerede kendi satırında ortalı, çok geniş pencerede (2xl) ortada tek satır */}
+      <div className="order-last hidden w-full justify-center md:flex min-[1800px]:order-none min-[1800px]:w-auto min-[1800px]:flex-1">
+      <nav className="flex items-center gap-1 rounded-2xl border border-line bg-white/[0.04] p-1 backdrop-blur">
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -87,16 +94,28 @@ export function Header({ phase, status, view, onView, onRun, onChat, onReplayInt
           </button>
         ))}
       </nav>
+      </div>
 
-      <div className="ml-auto flex items-center gap-3 md:ml-0">
-        <div className="hidden text-right lg:block">
+      <div className="ml-auto flex items-center gap-3 min-[1800px]:ml-0">
+        {/* Saat üstte, altında hava durumu ve konum: tek kolon */}
+        <div className="hidden flex-col items-end gap-1 text-right lg:flex">
           <div className="font-display text-2xl font-light tabular-nums leading-none tracking-tight">
             {hh}
             <span className="ml-0.5 text-sm text-ink-faint">{ss}</span>
           </div>
+          <WeatherChip weather={weather} compact />
         </div>
 
-        <WeatherChip weather={weather} />
+        {inbox}
+
+        <Button variant="ghost" size="sm" onClick={onSearch} title="Ara (Ctrl+K): wiki, kart, mail, Teams, hafıza" className="h-9 w-9 !px-0">
+          <Search size={16} />
+        </Button>
+
+        <Button variant="ghost" size="sm" onClick={onCompose} title="Mail taslağı: geçmişten bilgi toplayıp yazar (göndermez)" className="h-9 w-9 !px-0">
+          <Mail size={16} />
+        </Button>
+
         <MicButton />
 
         <Button
