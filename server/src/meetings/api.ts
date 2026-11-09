@@ -90,6 +90,11 @@ export function meetingsRouter() {
     callWatcher.decline();
     res.json(callWatcher.snapshot());
   }));
+  // "Katıl" anında: arama penceresinin görüntüsünden arayanı oku (arka planda; durum /call'da görünür)
+  r.post('/call/identify', wrap(async (_req, res) => {
+    callWatcher.startIdentify();
+    res.json(callWatcher.snapshot());
+  }));
   r.post('/call/joined', wrap(async (_req, res) => {
     callWatcher.joined();
     res.json(callWatcher.snapshot());
@@ -188,7 +193,9 @@ export function meetingsRouter() {
     const dir = meetingDir(m.id);
     mkdirSync(dir, { recursive: true });
     const file = join(dir, 'live.webm');
-    res.json(light(await store.updateMeeting(m.id, { audio_file: file })));
+    const started = await store.updateMeeting(m.id, { audio_file: file });
+    callWatcher.attach(m.id); // az önce bir arama okunduysa arayan adı bu toplantıya işlenir
+    res.json(light(started));
   }));
 
   r.post('/:id/chunk', wrap(async (req, res) => {

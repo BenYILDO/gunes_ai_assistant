@@ -3,6 +3,7 @@ import { AlertTriangle, CalendarClock, CheckCircle2, Download, FileAudio, Folder
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, type CalendarMeeting, type MeetingItem, type MeetingStatus, type WikiPageMeta } from '../lib/api';
 import { usePoll } from '../lib/hooks';
+import { callerLine, useCall } from '../lib/callState';
 import { liveCapture, liveSupported, useLive } from '../lib/liveCapture';
 import { relTime } from '../lib/time';
 import { Button, Chip, Empty, Panel, PanelTitle } from './ui';
@@ -37,6 +38,7 @@ function Select({ value, onChange, children, className = '' }: { value: string; 
 export function MeetingsView({ projects, onOpenWiki }: { projects: WikiPageMeta[]; onOpenWiki: (slug: string) => void }) {
   const toast = useToast();
   const live = useLive();
+  const callNow = useCall(live.active).call;
   const tools = usePoll(api.meetingTools, 0);
   const list = usePoll(api.meetings, 4000);
   const calendar = usePoll(api.meetingCalendar, 0);
@@ -139,6 +141,11 @@ export function MeetingsView({ projects, onOpenWiki }: { projects: WikiPageMeta[
                   <div className="text-[11px] text-ink-faint">
                     {clock(elapsed)} · {live.micOk ? 'karşı taraf + mikrofon' : 'yalnızca karşı taraf (mikrofon yok)'} · {live.chunks} parça aktarıldı
                   </div>
+                  {callerLine(callNow) && (
+                    <div className="text-[11px] text-ink-dim" title="Arama penceresinin ekran görüntüsünden okundu; doğrulayın">
+                      {callerLine(callNow)} <span className="text-ink-faint">(ekrandan okundu, doğrulayın)</span>
+                    </div>
+                  )}
                 </div>
                 <Button variant="danger" size="sm" disabled={live.stopping} onClick={() => void liveCapture.stop()}>
                   {live.stopping ? <Loader2 size={13} className="animate-spin" /> : <Square size={12} />} Bitir ve işle

@@ -8,6 +8,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { appendFileSync, existsSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { config, DATA_DIR, ROOT } from '../config.js';
+import { procPattern } from './callid.js';
 
 export const RING_LOG = join(DATA_DIR, 'callwatch.log');
 let child: ChildProcess | null = null;
@@ -16,9 +17,9 @@ export function startRingLog() {
   if (child || process.platform !== 'win32' || !config.meetings.callWatch) return;
   const script = join(ROOT, 'scripts', 'windows', 'pencere-izle.ps1');
   if (!existsSync(script)) return;
-  const pattern = config.meetings.callApps.map((a) => a.replace(/[^a-z0-9]/gi, '')).filter(Boolean).join('|') || 'teams';
+  const pattern = procPattern();
   try {
-    child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, '-Pattern', pattern.replace('msteams', 'teams')], { windowsHide: true });
+    child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, '-Pattern', pattern], { windowsHide: true });
   } catch {
     return;
   }

@@ -1,7 +1,8 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { Headphones, X } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, type CallSnapshot } from '../lib/api';
+import { useEffect, useRef, useState } from 'react';
+import { api } from '../lib/api';
+import { useCall } from '../lib/callState';
 import { liveCapture, liveSupported, useLive } from '../lib/liveCapture';
 import type { Phase } from '../lib/time';
 import { SunCore } from './SunCore';
@@ -16,22 +17,9 @@ import { useToast } from './Toasts';
 export function CallPrompt({ phase, onOpenMeetings }: { phase: Phase; onOpenMeetings: () => void }) {
   const toast = useToast();
   const live = useLive();
-  const [call, setCall] = useState<CallSnapshot | null>(null);
+  const { call, setCall } = useCall();
   const [busy, setBusy] = useState(false);
   const notified = useRef<string | null>(null);
-
-  const refresh = useCallback(async () => {
-    try {
-      setCall(await api.callState());
-    } catch {
-      /* sunucuya ulaşılamadı: sonraki turda */
-    }
-  }, []);
-  useEffect(() => {
-    void refresh();
-    const t = setInterval(() => void refresh(), 3000); // görünürlükten bağımsız
-    return () => clearInterval(t);
-  }, [refresh]);
 
   const show = Boolean(call?.prompt) && !live.active;
   const title = call?.event ? call.event.subject : 'Plansız arama';
@@ -53,7 +41,9 @@ export function CallPrompt({ phase, onOpenMeetings }: { phase: Phase; onOpenMeet
     if (!call) return;
     setBusy(true);
     try {
-      // Tıklamadan hemen ekran paylaşımı istenir (tarayıcı kullanıcı hareketi ister)
+      // Onay anında arama penceresinin görüntüsünden arayan okunur (arka planda); ardından ekran paylaşımı istenir
+      // (tarayıcı kullanıcı hareketi ister: bu yüzden getDisplayMedia ilk eşzamanlı çağrı kalmalı)
+      if (call.screenshot) void api.callIdentify().catch(() => {});
       const hhmm = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
       await liveCapture.start(
         { title: call.event?.subject ?? `Plansız arama · ${call.app ?? 'arama'} · ${hhmm}`, event: call.event?.external_id },
@@ -106,7 +96,7 @@ export function CallPrompt({ phase, onOpenMeetings }: { phase: Phase; onOpenMeet
                 Bu aramaya katılmamı ister misiniz?
               </p>
               <p className="mt-1 text-[11px] leading-relaxed text-ink-faint">
-                "Katıl" derseniz sesi dinleyip yazıya çeviririm (bu bilgisayarda). Arama dışındaki kişilerin bilgisi/onayı için kurum politikanıza uyun. Ses dosyası 30 gün sonra silinir.
+                "Katıl" derseniz sesi dinleyip yazıya çeviririm (bu bilgisayarda).{call?.screenshot ? " Arayanı görmek için arama penceresinin ekran görüntüsünü alıp Claude'a okuturum (görüntü saklanmaz, hemen silinir)." : ''} Arama dışındaki kişilerin bilgisi/onayı için kurum politikanıza uyun. Ses dosyası 30 gün sonra silinir.
               </p>
               <div className="mt-3 flex gap-2">
                 <motion.button

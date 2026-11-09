@@ -211,6 +211,8 @@ export interface CallSnapshot {
   since: string | null;
   planned: boolean;
   event: { external_id: string; subject: string; occurred_at: string } | null;
+  screenshot: boolean;
+  identity: { status: 'running' | 'ok' | 'none' | 'error'; callers: string[]; title: string | null; confidence: 'yuksek' | 'orta' | 'dusuk' | null; note: string | null };
 }
 export interface CalendarMeeting { external_id: string; subject: string; occurred_at: string; ends_at: string | null; link: string | null; summary: string }
 export interface FolderFile { path: string; name: string; size: number; mtime: string }
@@ -248,6 +250,7 @@ export const api = {
   meetingTools: () => req<MeetingTools>('/meetings/tools'),
   callState: () => req<CallSnapshot>('/meetings/call'),
   callDecline: () => req<CallSnapshot>('/meetings/call/decline', json('POST', {})),
+  callIdentify: () => req<CallSnapshot>('/meetings/call/identify', json('POST', {})),
   callJoined: () => req<CallSnapshot>('/meetings/call/joined', json('POST', {})),
   meetingCalendar: () => req<CalendarMeeting[]>('/meetings/calendar'),
   meetingFolder: () => req<{ enabled: boolean; dir?: string; files: FolderFile[] }>('/meetings/folder'),

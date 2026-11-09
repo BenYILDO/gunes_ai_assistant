@@ -95,6 +95,8 @@ export const config = {
     audioRetentionDays: Number(env('GUNES_AUDIO_RETENTION_DAYS', '30')),
     /** Arama algılama: Windows'un mikrofon kullanım kaydını izler; arama başlayınca Güneş "katılmamı ister misiniz?" diye sorar */
     callWatch: env('GUNES_CALL_WATCH', 'on') !== 'off',
+    /** "Katıl" denince arama penceresinin görüntüsü alınıp Claude'a verilerek arayanın adı okunur (görüntü saklanmaz). off = kapalı */
+    callScreenshot: env('GUNES_CALL_SCREENSHOT', 'on') !== 'off',
     /** Hangi uygulamaların mikrofon kullanımı "arama" sayılır (tarayıcılar Güneş'in kendi sesli komutuyla karışmasın diye yok) */
     callApps: list('GUNES_CALL_APPS', 'msteams,zoom,webex,skype,slack'),
     /** Panelde "klasörden seç" için taranan klasör (ör. OneDrive Toplantılar); boşsa kapalı */

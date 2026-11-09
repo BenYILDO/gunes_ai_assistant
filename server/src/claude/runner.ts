@@ -140,6 +140,8 @@ export interface RunOptions {
   persist?: boolean;
   /** Düşünme çabası: low | medium | high (toplayıcı için low = daha hızlı) */
   effort?: string;
+  /** Görsel girdi (ör. arama penceresi ekran görüntüsü): CLI'a stream-json ile verilir, model araç kullanmaz */
+  images?: { mediaType: 'image/png' | 'image/jpeg'; base64: string }[];
   timeoutMs?: number;
   onEvent?: (e: RunnerEvent) => void;
   signal?: AbortSignal;
@@ -183,6 +185,7 @@ export function runClaude(opts: RunOptions): Promise<RunResult> {
   if (tp.allowed.length) args.push('--allowedTools', tp.allowed.join(','));
   if (tp.disallowed.length) args.push('--disallowedTools', tp.disallowed.join(','));
   if (opts.effort) args.push('--effort', opts.effort);
+  if (opts.images?.length) args.push('--input-format', 'stream-json');
   if (opts.appendSystemPrompt) args.push('--append-system-prompt', opts.appendSystemPrompt);
   if (opts.resume) args.push('--resume', opts.resume);
   else if (opts.sessionId) args.push('--session-id', opts.sessionId);
@@ -316,6 +319,12 @@ export function runClaude(opts: RunOptions): Promise<RunResult> {
 
     // claude hemen kapanırsa (giriş yok, bulunamadı) EPIPE sunucuyu düşürmesin
     child.stdin.on('error', () => {});
-    child.stdin.end(opts.prompt, 'utf8');
+    if (opts.images?.length) {
+      const content = [
+        ...opts.images.map((i) => ({ type: 'image', source: { type: 'base64', media_type: i.mediaType, data: i.base64 } })),
+        { type: 'text', text: opts.prompt },
+      ];
+      child.stdin.end(JSON.stringify({ type: 'user', message: { role: 'user', content } }) + '\n', 'utf8');
+    } else child.stdin.end(opts.prompt, 'utf8');
   });
 }

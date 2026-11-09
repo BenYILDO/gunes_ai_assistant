@@ -12,6 +12,8 @@ import type { EventItem } from '../store/types.js';
 import { config } from '../config.js';
 import { getStore } from '../store/index.js';
 import { run } from './tools.js';
+import { identifyCaller, NO_IDENTITY, type Identity } from './callid.js';
+import { sameName } from './voices.js';
 
 const MIC_KEY = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\microphone';
 
@@ -130,6 +132,10 @@ export interface CallSnapshot {
   since: string | null;
   planned: boolean;
   event: { external_id: string; subject: string; occurred_at: string } | null;
+  /** "Katıl" denince pencere görüntüsünden arayan okunur mu (GUNES_CALL_SCREENSHOT) */
+  screenshot: boolean;
+  /** Arayan (ekran görüntüsünden okundu; doğrulanmalı) */
+  identity: Pick<Identity, 'status' | 'callers' | 'title' | 'confidence' | 'note'>;
 }
 
 class CallWatcher {
@@ -137,6 +143,9 @@ class CallWatcher {
   private event: EventItem | null = null;
   private timer: NodeJS.Timeout | null = null;
   private busy = false;
+  private identity: Identity = NO_IDENTITY;
+  private identityJob: Promise<void> | null = null;
+  private attachId: string | null = null;
 
   start() {
     if (this.timer || process.platform !== 'win32' || !config.meetings.callWatch) return;
@@ -157,7 +166,11 @@ class CallWatcher {
       const active = activeCallApps(entries, config.meetings.callApps)[0] ?? null;
       const before = this.data;
       this.data = stepCall(this.data, active ? { sid: active.sid, app: active.label } : null, Date.now());
-      if (this.data.id !== before.id) this.event = null;
+      if (this.data.id !== before.id) {
+        this.event = null;
+        this.identity = NO_IDENTITY;
+        this.attachId = null;
+      }
       if (this.data.status === 'pending' && before.status !== 'pending') {
         // Güneş zaten bu toplantıyı dinliyorsa (kullanıcı elle başlattı) sorma
         const meetings = await getStore().listMeetings(5).catch(() => []);
@@ -180,8 +193,50 @@ class CallWatcher {
       since: d.since ? new Date(d.since).toISOString() : null,
       planned: Boolean(this.event),
       event: this.event ? { external_id: this.event.external_id, subject: this.event.subject ?? this.event.summary.slice(0, 80), occurred_at: this.event.occurred_at } : null,
+      screenshot: config.meetings.callScreenshot,
+      identity: { status: this.identity.status, callers: this.identity.callers, title: this.identity.title, confidence: this.identity.confidence, note: this.identity.note },
     };
   }
+  /** "Katıl" anında: arama penceresinin görüntüsünü alıp Claude'a okutur (arka planda; görüntü saklanmaz). */
+  startIdentify() {
+    if (this.identityJob || !config.meetings.callScreenshot) return;
+    this.identity = { ...NO_IDENTITY, status: 'running', at: Date.now() };
+    this.identityJob = identifyCaller()
+      .then((id) => {
+        this.identity = id;
+      })
+      .catch((e: Error) => {
+        this.identity = { ...NO_IDENTITY, status: 'error', note: e.message.slice(0, 160), at: Date.now() };
+      })
+      .then(() => this.applyToMeeting())
+      .catch(() => {})
+      .finally(() => {
+        this.identityJob = null;
+      });
+  }
+
+  /** Dinleme başlayan toplantıya bağla: arayan adı katılımcı olur, plansız aramanın başlığı güncellenir. */
+  attach(meetingId: string) {
+    this.attachId = meetingId;
+    if (this.identity.status === 'ok' && Date.now() - this.identity.at < 5 * 60_000) void this.applyToMeeting().catch(() => {});
+  }
+
+  private async applyToMeeting() {
+    const id = this.attachId;
+    if (!id || this.identity.status !== 'ok') return;
+    const store = getStore();
+    const m = await store.getMeeting(id);
+    if (!m) return;
+    const attendees = [...m.attendees];
+    for (const c of this.identity.callers) if (!attendees.some((a) => sameName(a, c))) attendees.push(c);
+    const patch: Partial<typeof m> = { attendees };
+    if (/^Plansız arama/.test(m.title)) {
+      const hhmm = new Date(m.started_at ?? m.created_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', timeZone: config.timezone });
+      patch.title = `Arama · ${this.identity.callers.join(', ') || this.identity.title || 'plansız'} · ${hhmm}`.slice(0, 150);
+    }
+    await store.updateMeeting(id, patch);
+  }
+
   /** "Şimdi değil": bu arama için bir daha sorma */
   decline() {
     if (this.data.id) this.data = { ...this.data, status: 'declined' };
