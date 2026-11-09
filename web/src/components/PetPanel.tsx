@@ -169,6 +169,26 @@ export function PetPanel({ open, onClose, pet, onPet }: { open: boolean; onClose
                 </div>
               ) : (
                 <div className="space-y-6">
+                  <section>
+                    <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-ink-dim">Bugünün görevleri</h3>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {pet.goals.map((g) => (
+                        <div key={g.id} className={`rounded-xl border px-3 py-2.5 ${g.done ? 'border-[color:var(--ok)]/40 bg-[color:var(--ok)]/[0.07]' : 'border-line bg-white/[0.03]'}`}>
+                          <div className="flex items-center gap-2 text-sm">
+                            <span>{g.done ? '✅' : '🎯'}</span>
+                            <span className="min-w-0 flex-1">{g.name}</span>
+                            <span className="text-[11px] text-ink-faint">+{g.reward} 🪙</span>
+                          </div>
+                          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
+                            <div className="accent-gradient h-full rounded-full transition-all" style={{ width: `${Math.min(100, Math.round((g.have / g.need) * 100))}%` }} />
+                          </div>
+                          <div className="mt-1 text-[11px] text-ink-faint">
+                            {Math.min(g.have, g.need)}/{g.need} · isteğe bağlı, kaçırırsanız ceza yok
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
                   <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                     <Tile label="Besleme serisi" value={`🔥 ${pet.streak}`} sub={`en iyi ${pet.bestStreak}`} />
                     <Tile label="Ziyaret serisi" value={`☀️ ${pet.visitStreak}`} sub={`en iyi ${pet.bestVisitStreak}`} />

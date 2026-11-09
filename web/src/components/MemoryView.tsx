@@ -180,8 +180,8 @@ function MemoryItem({ m, onChange }: { m: Memory; onChange: () => void }) {
         )}
         <span className="ml-auto text-[10px] text-ink-faint">{relTime(m.updated_at)}</span>
         {!m.locked && (
-          <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-            <button onClick={() => setEdit(true)} className="text-ink-faint hover:text-ink">
+          <div className="flex gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+            <button onClick={() => setEdit(true)} aria-label="Düzenle" title="Düzenle" className="text-ink-faint hover:text-ink">
               <Pencil size={11} />
             </button>
             <button
@@ -190,6 +190,8 @@ function MemoryItem({ m, onChange }: { m: Memory; onChange: () => void }) {
                 toast('Unutuldu');
                 onChange();
               }}
+              aria-label="Unut"
+              title="Unut"
               className="text-ink-faint hover:text-danger"
             >
               <Trash2 size={11} />
@@ -228,11 +230,9 @@ function Dots({ value, onChange, small }: { value: number; onChange: (v: number)
   return (
     <div className="flex gap-0.5" title={`Önem: ${value}/5`}>
       {[1, 2, 3, 4, 5].map((i) => (
-        <button
-          key={i}
-          onClick={() => onChange(i)}
-          className={`${small ? 'h-1.5 w-1.5' : 'h-2.5 w-2.5'} rounded-full transition-all ${i <= value ? 'bg-accent shadow-[0_0_6px_rgb(var(--glow))]' : 'bg-white/15'}`}
-        />
+        <button key={i} onClick={() => onChange(i)} aria-label={`Önem ${i} / 5`} aria-pressed={i <= value} className="grid place-items-center p-1">
+          <span className={`${small ? 'h-1.5 w-1.5' : 'h-2.5 w-2.5'} rounded-full transition-all ${i <= value ? 'bg-accent shadow-[0_0_6px_rgb(var(--glow))]' : 'bg-white/15'}`} />
+        </button>
       ))}
     </div>
   );

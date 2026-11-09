@@ -736,7 +736,7 @@ export function PetCompanion({
             ))}
           </AnimatePresence>
 
-          <motion.div animate={hop} onTap={pat} className="relative flex h-full w-full items-end justify-center">
+          <motion.div animate={hop} onTap={pat} role="button" aria-label={`${pet.name}'ı sev`} className="relative flex h-full w-full items-end justify-center">
             <div className="flex items-end justify-center" style={{ transform: `scaleX(${lying ? 1 : facing})`, transformOrigin: 'bottom center', transition: 'transform 0.22s ease-in-out' }}>
               <Cat pose={shownPose} eyes={eyes} eating={eating} lifted={lifted} calm={calm} size={W} species={species} worn={worn} />
             </div>

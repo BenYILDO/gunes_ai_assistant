@@ -206,12 +206,14 @@ export function apiRouter() {
     wrap(async (_req, res) => res.json(await visitPet())),
   );
   const petResult = (out: Awaited<ReturnType<typeof buyPetItem>>, res: Response) => ('error' in out ? res.status(400).json(out) : res.json(out));
-  const num = (v: unknown) => (typeof v === 'number' ? v : Number(v));
-  r.post('/pet/buy', wrap(async (req, res) => petResult(await buyPetItem(String(req.body?.item ?? '')), res)));
-  r.post('/pet/place', wrap(async (req, res) => petResult(await placePetItem(String(req.body?.item ?? ''), num(req.body?.x), num(req.body?.b)), res)));
-  r.post('/pet/unplace', wrap(async (req, res) => petResult(await unplacePetItem(String(req.body?.item ?? '')), res)));
-  r.post('/pet/equip', wrap(async (req, res) => petResult(await equipPetItem(String(req.body?.item ?? ''), Boolean(req.body?.on)), res)));
-  r.post('/pet/species', wrap(async (req, res) => petResult(await choosePetSpecies(String(req.body?.species ?? ''), Boolean(req.body?.buy)), res)));
+  // Girdiler güvenilmez: nesne/dizi gelirse String()/Number() dönüşümü TypeError fırlatabilir; yalnızca düz türler kabul edilir
+  const num = (v: unknown) => (typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN);
+  const txt = (v: unknown) => (typeof v === 'string' ? v : '');
+  r.post('/pet/buy', wrap(async (req, res) => petResult(await buyPetItem(txt(req.body?.item)), res)));
+  r.post('/pet/place', wrap(async (req, res) => petResult(await placePetItem(txt(req.body?.item), num(req.body?.x), num(req.body?.b)), res)));
+  r.post('/pet/unplace', wrap(async (req, res) => petResult(await unplacePetItem(txt(req.body?.item)), res)));
+  r.post('/pet/equip', wrap(async (req, res) => petResult(await equipPetItem(txt(req.body?.item), Boolean(req.body?.on)), res)));
+  r.post('/pet/species', wrap(async (req, res) => petResult(await choosePetSpecies(txt(req.body?.species), Boolean(req.body?.buy)), res)));
   r.post(
     '/pet/event',
     wrap(async (req, res) => {

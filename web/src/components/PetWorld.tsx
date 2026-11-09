@@ -86,6 +86,12 @@ function HouseSvg() {
 }
 
 // ---------- sürüklenebilir eşya (mama kabı, minder, ev)
+const ITEM_LABEL: Record<string, string> = {
+  bowl: 'Mama kabı',
+  cushion: 'Minder',
+  house: 'Ev',
+};
+
 function Item({
   id,
   w,
@@ -119,6 +125,8 @@ function Item({
     <motion.div
       ref={root}
       data-pet-item={id}
+      role={onTap ? 'button' : 'img'}
+      aria-label={`${ITEM_LABEL[id] ?? id}${id === 'bowl' ? ' — hayvanı beslemek için tıklayın' : ''} (taşımak için sürükleyin)`}
       drag
       dragMomentum={false}
       dragElastic={0}
@@ -235,6 +243,8 @@ function BallItem({ x, b, size, onMoved }: { x: number; b: number; size: number;
     <div
       ref={el}
       data-pet-item="ball"
+      role="img"
+      aria-label="Yün yumağı (fırlatmak için sürükleyip bırakın)"
       style={{ position: 'fixed', left: 0, top: 0, width: size, height: size, pointerEvents: 'auto', touchAction: 'none', cursor: 'grab' }}
       onPointerDown={(e) => {
         const c = s.current;

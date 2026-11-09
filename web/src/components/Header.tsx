@@ -74,8 +74,8 @@ export function Header({ phase, status, view, onView, onRun, onChat, onReplayInt
       </div>
 
       {/* Sekmeler: dar pencerede kendi satırında ortalı, çok geniş pencerede (2xl) ortada tek satır */}
-      <div className="order-last hidden w-full justify-center md:flex min-[1800px]:order-none min-[1800px]:w-auto min-[1800px]:flex-1">
-      <nav className="flex items-center gap-1 rounded-2xl border border-line bg-white/[0.04] p-1 backdrop-blur">
+      <div className="order-last flex w-full justify-center min-[1800px]:order-none min-[1800px]:w-auto min-[1800px]:flex-1">
+      <nav aria-label="Ana gezinme" className="scroll-thin flex max-w-full items-center gap-1 overflow-x-auto rounded-2xl border border-line bg-white/[0.04] p-1 backdrop-blur">
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -96,7 +96,7 @@ export function Header({ phase, status, view, onView, onRun, onChat, onReplayInt
       </nav>
       </div>
 
-      <div className="ml-auto flex items-center gap-3 min-[1800px]:ml-0">
+      <div className="ml-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-2 min-[1800px]:ml-0">
         {/* Saat üstte, altında hava durumu ve konum: tek kolon */}
         <div className="hidden flex-col items-end gap-1 text-right lg:flex">
           <div className="font-display text-2xl font-light tabular-nums leading-none tracking-tight">

@@ -72,6 +72,8 @@ interface Props {
   proposalCount: number;
   onTalkNudge: (n: Nudge) => void;
   onGoMeetings: () => void;
+  /** Haftalık özet kartı (Pazartesi–Çarşamba) */
+  recap?: React.ReactNode;
 }
 
 
@@ -176,6 +178,8 @@ export function BriefingView(p: Props) {
       </motion.section>
 
       <NextUp today={today} nudges={p.nudges} approvals={p.actions.length} proposals={p.proposalCount} onTalk={p.onTalkNudge} onApprovals={() => document.getElementById('onay-paneli')?.scrollIntoView({ behavior: 'smooth' })} onMeetings={p.onGoMeetings} />
+
+      {p.recap}
 
       {/* Sayılar */}
       {briefing && (

@@ -305,3 +305,16 @@ html[data-weather='drizzle'] .glass {
     0 1px 0 rgb(255 255 255 / 0.06) inset,
     0 24px 60px -18px rgb(0 0 0 / 0.75);
 }
+
+
+/* Klavye odağı: her etkileşimli öğede belirgin halka (tarayıcı varsayılanı 1 px ve soluk) */
+:focus-visible {
+  outline: 2px solid rgb(var(--glow) / 0.95);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline-offset: 0;
+}

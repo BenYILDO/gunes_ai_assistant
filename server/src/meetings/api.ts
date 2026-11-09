@@ -10,7 +10,7 @@ import { config } from '../config.js';
 import { getStore } from '../store/index.js';
 import type { Meeting } from '../store/types.js';
 import { earnPet } from '../pet.js';
-import { cancelMeeting, finalizeMeeting, MeetingError, meetingDir, nameSpeaker, processMeeting, relabelSpeaker, removeMeetingFiles, transcriptText } from './pipeline.js';
+import { cancelMeeting, finalizeMeeting, MeetingError, meetingDir, SAFE_MEETING_ID, nameSpeaker, processMeeting, relabelSpeaker, removeMeetingFiles, transcriptText } from './pipeline.js';
 import { meetingTools } from './tools.js';
 import { callWatcher } from './callwatch.js';
 import { startLiveMeeting } from './live.js';
@@ -23,7 +23,11 @@ const wrap =
 
 const MEDIA = new Set(['.mp4', '.m4a', '.mp3', '.wav', '.webm', '.mkv', '.ogg', '.flac', '.mov', '.aac']);
 const MAX_CHUNK = 64 * 1024 * 1024;
-const idOf = (req: Request) => String(req.params.id ?? '');
+const idOf = (req: Request) => {
+  const id = String(req.params.id ?? '');
+  if (!SAFE_MEETING_ID.test(id)) throw new MeetingError('Geçersiz toplantı kimliği.', 400);
+  return id;
+};
 
 /** Kayıt klasörü içinde mi? (yol kaçışı yok) */
 export function insideDir(root: string, file: string) {

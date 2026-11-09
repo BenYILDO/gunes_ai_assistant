@@ -213,7 +213,7 @@ export interface MeetingAnalysis {
   kararlar: string[];
   aksiyonlar: { kim: string; ne: string; ne_zaman: string }[];
 }
-export type ProposalKind = 'create_card' | 'update_card' | 'wiki_meeting_page' | 'wiki_append' | 'remember';
+export type ProposalKind = 'create_card' | 'update_card' | 'wiki_meeting_page' | 'wiki_append' | 'remember' | 'followup_mail';
 /** Güneş'in önerdiği iş: kullanıcı onaylamadan hiçbir şey yazılmaz */
 export interface MeetingProposal {
   id: string;
@@ -227,6 +227,8 @@ export interface MeetingProposal {
   payload: Record<string, unknown>;
   /** Uygulandıysa ne yapıldı (ör. "Kart açıldı: [ab12cd34]") */
   result?: string;
+  /** followup_mail: hazırlanan TASLAK metin. Güneş mail göndermez ve Outlook'a taslak bile yazmaz; kullanıcı kopyalar. */
+  draft?: string;
 }
 export interface Meeting {
   id: string;

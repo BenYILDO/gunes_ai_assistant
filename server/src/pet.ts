@@ -80,6 +80,8 @@ export interface PetState {
   work: { date: string; amount: number };
   /** Seri koruyucu stoku (0-3) */
   freezes: number;
+  /** Günlük küçük görevler: bugünün sayaçları ve ödülü alınan görevler */
+  daily: { date: string; cards: number; actions: number; claimed: string[] };
   owned: ItemId[];
   placed: Placed[];
   worn: ItemId[];
@@ -144,6 +146,19 @@ export function levelOf(lifetime: number) {
   return { level: idx + 1, name: LEVELS[idx]!.name, from: LEVELS[idx]!.at, next: next ? next.at : null };
 }
 
+// ---------- günlük küçük görevler (isteğe bağlı; ek puan verir, ceza yoktur)
+export interface DailyGoal {
+  id: string;
+  name: string;
+  metric: 'cards' | 'actions';
+  need: number;
+  reward: number;
+}
+export const DAILY_GOALS: DailyGoal[] = [
+  { id: 'cards3', name: 'Bugün 3 kart kapat', metric: 'cards', need: 3, reward: 5 },
+  { id: 'action1', name: "Güneş'le 1 iş yap (öneri uygula ya da toplantı işle)", metric: 'actions', need: 1, reward: 3 },
+];
+
 // ---------- puan kuralları
 export type EarnKind = 'card_done' | 'proposal' | 'meeting' | 'day_closed' | 'feed' | 'visit';
 /** İş eylemlerinden (kart, öneri, toplantı) günde en çok kazanılabilecek puan: puan basmayı sınırlar */
@@ -169,6 +184,7 @@ export function newPet(now = new Date()): PetState {
     lifetime: 0,
     work: { date: '', amount: 0 },
     freezes: 0,
+    daily: { date: '', cards: 0, actions: 0, claimed: [] },
     owned: [...DEFAULT_ITEMS],
     placed: [{ itemId: 'bowl', x: 0.2, b: 0.09 }],
     worn: [],
@@ -189,6 +205,8 @@ export function normalize(raw: Partial<PetState> | null | undefined, now = new D
   s.unlocked = Array.isArray(raw?.unlocked) && raw.unlocked.length ? raw.unlocked : ['cat'];
   if (!s.unlocked.includes(s.species)) s.species = 'cat';
   s.enabled = raw?.enabled === true;
+  s.daily = { date: '', cards: 0, actions: 0, claimed: [], ...(raw?.daily ?? {}) };
+  if (!Array.isArray(s.daily.claimed)) s.daily.claimed = [];
   s.freezes = Math.min(MAX_FREEZES, Math.max(0, Math.floor(Number(raw?.freezes) || 0)));
   s.owned = Array.isArray(raw?.owned) ? raw.owned.filter((id) => itemOf(id)?.kind !== 'use') : [...DEFAULT_ITEMS];
   if (!s.owned.includes('bowl')) s.owned = ['bowl', ...s.owned];
@@ -232,6 +250,7 @@ export interface PetView extends PetState {
   level: { level: number; name: string; from: number; next: number | null };
   /** Bugün iş eylemlerinden kalan puan hakkı */
   workLeft: number;
+  goals: { id: string; name: string; need: number; have: number; reward: number; done: boolean }[];
   catalog: { species: SpeciesInfo[]; items: ItemInfo[]; achievements: { id: string; name: string; desc: string; emoji: string; reward: number }[]; workCap: number };
 }
 
@@ -244,6 +263,7 @@ export function view(s: PetState, today: string): PetView {
     streak: streakAlive(s, today) ? s.streak : 0,
     level: levelOf(s.lifetime),
     workLeft: s.work.date === today ? Math.max(0, WORK_CAP - s.work.amount) : WORK_CAP,
+    goals: DAILY_GOALS.map((g) => ({ id: g.id, name: g.name, need: g.need, reward: g.reward, have: s.daily.date === today ? s.daily[g.metric] : 0, done: s.daily.date === today && s.daily.claimed.includes(g.id) })),
     catalog: { species: SPECIES, items: ITEMS, achievements: ACHIEVEMENTS.map(({ id, name, desc, emoji, reward }) => ({ id, name, desc, emoji, reward })), workCap: WORK_CAP },
   };
 }
@@ -287,9 +307,21 @@ export function earn(s: PetState, kind: EarnKind, today: string, meta: { high?: 
     amount = Math.min(amount, left);
     work = { date: today, amount: work.amount + amount };
   }
-  const next: PetState = { ...s, stats, work, coins: s.coins + amount, lifetime: s.lifetime + amount };
+  // günlük görevler: sayaçlar ve (ilk kez) tamamlanan görevin ödülü; iş puanı sınırının dışındadır
+  const daily = s.daily.date === today ? { ...s.daily, claimed: [...s.daily.claimed] } : { date: today, cards: 0, actions: 0, claimed: [] as string[] };
+  if (kind === 'card_done') daily.cards++;
+  else if (kind === 'proposal' || kind === 'meeting') daily.actions++;
+  let goalBonus = 0;
+  for (const g of DAILY_GOALS) {
+    if (!daily.claimed.includes(g.id) && daily[g.metric] >= g.need) {
+      daily.claimed.push(g.id);
+      goalBonus += g.reward;
+    }
+  }
+  const total = amount + goalBonus;
+  const next: PetState = { ...s, stats, work, daily, coins: s.coins + total, lifetime: s.lifetime + total };
   const u = unlockAchievements(next, today);
-  return { state: u.state, gained: amount + (u.state.coins - next.coins), newly: u.newly };
+  return { state: u.state, gained: total + (u.state.coins - next.coins), newly: u.newly };
 }
 
 /** Günlük ziyaret: günün ilk açılışında +puan ve ziyaret serisi. */

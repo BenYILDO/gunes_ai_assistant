@@ -27,7 +27,12 @@ export class MeetingError extends Error {
 /** Transkript hazır olunca (status=review) çağrılır; proposals.ts kaydeder (döngüsel içe aktarmayı önlemek için kanca). */
 export const hooks: { onReview: ((id: string) => void) | null } = { onReview: null };
 
-export const meetingDir = (id: string) => join(DATA_DIR, 'meetings', id);
+/** Toplantı kimliği: yalnızca harf/rakam/_/- (UUID dahil). `..` ya da `/` içeren bir kimlik dosya yoluna dönüşemez (yol geçişi koruması). */
+export const SAFE_MEETING_ID = /^[A-Za-z0-9_-]{1,64}$/;
+export function meetingDir(id: string) {
+  if (!SAFE_MEETING_ID.test(id)) throw new MeetingError('Geçersiz toplantı kimliği.', 400);
+  return join(DATA_DIR, 'meetings', id);
+}
 const MIN_EMBED_SEC = 1.0;
 
 // ---------- küçük yardımcılar

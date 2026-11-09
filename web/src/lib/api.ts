@@ -129,6 +129,7 @@ export interface Pet {
   mood: 'happy' | 'content' | 'hungry';
   level: { level: number; name: string; from: number; next: number | null };
   workLeft: number;
+  goals: { id: string; name: string; need: number; have: number; reward: number; done: boolean }[];
   catalog: { species: { id: PetSpecies; name: string; price: number }[]; items: PetItemInfo[]; achievements: PetAchievementInfo[]; workCap: number };
 }
 export type PetGain = { gained?: number; newly?: string[] };
@@ -214,8 +215,8 @@ export interface MeetingSpeaker {
   samples: { b: number; e: number }[];
 }
 export interface MeetingCue { b: number; e: number; text: string; speaker: string | null; score: number | null; cluster: string | null; raw?: string }
-export type ProposalKind = 'create_card' | 'update_card' | 'wiki_meeting_page' | 'wiki_append' | 'remember';
-export interface MeetingProposal { id: string; kind: ProposalKind; title: string; reason: string; status: 'pending' | 'applied' | 'skipped' | 'failed'; payload: Record<string, unknown>; result?: string }
+export type ProposalKind = 'create_card' | 'update_card' | 'wiki_meeting_page' | 'wiki_append' | 'remember' | 'followup_mail';
+export interface MeetingProposal { id: string; kind: ProposalKind; title: string; reason: string; status: 'pending' | 'applied' | 'skipped' | 'failed'; payload: Record<string, unknown>; result?: string; draft?: string }
 export interface MeetingAnalysis { ozet: string; konular: string[]; kararlar: string[]; aksiyonlar: { kim: string; ne: string; ne_zaman: string }[] }
 export type MeetingStatus = 'recording' | 'queued' | 'processing' | 'review' | 'done' | 'error';
 export interface MeetingItem {

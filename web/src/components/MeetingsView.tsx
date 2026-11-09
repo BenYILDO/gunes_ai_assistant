@@ -28,9 +28,15 @@ const KIND_LABEL: Record<MeetingProposal['kind'], string> = {
   wiki_meeting_page: '📚 Wiki sayfası',
   wiki_append: "📚 Wiki'ye ekle",
   remember: '🧠 Hafızaya al',
+  followup_mail: '✉️ Takip maili taslağı',
 };
 const detailOf = (p: MeetingProposal) => {
   const v = p.payload as Record<string, unknown>;
+  if (p.kind === 'followup_mail') {
+    const to = Array.isArray(v.to) ? (v.to as string[]).join(', ') : '';
+    const pts = Array.isArray(v.points) ? (v.points as string[]).map((x) => `• ${x}`).join('  ') : '';
+    return `Alıcı: ${to}. ${pts}`.slice(0, 260);
+  }
   const t = [v.description, v.note, v.text, v.content].find((x) => typeof x === 'string' && x) as string | undefined;
   return t ? t.slice(0, 220) : '';
 };
@@ -373,6 +379,13 @@ function MeetingDetail({ id, projects, retentionDays, onClose, onChanged, onOpen
   const [showAll, setShowAll] = useState(false);
   const alive = useRef(true);
   useEffect(() => () => void (alive.current = false), []);
+  // Esc ile kapanır (klavye kullanıcıları ve genel beklenti)
+  useEffect(() => {
+    if (!id) return;
+    const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, [id, onClose]);
 
   const load = async () => {
     if (!id) return;
@@ -483,6 +496,14 @@ function MeetingDetail({ id, projects, retentionDays, onClose, onChanged, onOpen
                             {detailOf(p) && <div className="mt-0.5 text-[11px] leading-relaxed text-ink-dim">{detailOf(p)}</div>}
                             {p.reason && <div className="mt-0.5 text-[11px] italic text-ink-faint">{p.reason}</div>}
                             {p.result && <div className={`mt-0.5 text-[11px] ${p.status === 'failed' ? 'text-danger' : 'text-ok'}`}>{p.result}</div>}
+                            {p.draft && (
+                              <div className="mt-1.5 space-y-1">
+                                <textarea readOnly value={p.draft} aria-label="Takip maili taslağı" rows={Math.min(12, p.draft.split('\n').length + 1)} className="w-full resize-y rounded-lg border border-line bg-black/30 p-2 text-[12px] leading-relaxed text-ink-dim outline-none" />
+                                <Button size="sm" onClick={() => void navigator.clipboard.writeText(p.draft!).then(() => toast('Taslak kopyalandı. Güneş mail göndermez; kendiniz gönderin.'))}>
+                                  Taslağı kopyala
+                                </Button>
+                              </div>
+                            )}
                           </div>
                           {p.status === 'pending' ? (
                             <div className="flex shrink-0 gap-1">

@@ -13,11 +13,11 @@ import { PRIORITIES, type Card, type Meeting, type MeetingAnalysis, type Meeting
 import { exportWiki, extractLinks } from '../wiki.js';
 import { finalizeMeeting, hooks, MeetingError, transcriptText } from './pipeline.js';
 import { refineStored } from './refine.js';
-import { foldName } from './voices.js';
+import { foldName, sameName } from './voices.js';
 
 const clip = (s: unknown, n: number) => (typeof s === 'string' ? s : '').replace(/\s+/g, ' ').trim().slice(0, n);
 export const MAX_PROPOSALS = 8;
-const KINDS: ProposalKind[] = ['create_card', 'update_card', 'wiki_meeting_page', 'wiki_append', 'remember'];
+const KINDS: ProposalKind[] = ['create_card', 'update_card', 'wiki_meeting_page', 'wiki_append', 'remember', 'followup_mail'];
 const MEMORY_KINDS_OK = ['memory', 'lesson', 'person', 'project'] as const;
 const UPDATE_STATUS_OK = ['todo', 'doing', 'waiting', 'review'] as const; // 'done' ve 'inbox' asla
 const isDate = (s: unknown): s is string => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
@@ -36,13 +36,15 @@ KURALLAR
 - wiki_meeting_page: toplantının wiki sayfası; bir proje wiki sayfasıyla ilgiliyse project_slug olarak aşağıdaki wiki listesinden slug ver, değilse null. (Her toplantıda önerme: wiki'ye yazmak gereksizse önerme.)
 - wiki_append: YALNIZCA aşağıdaki listede var olan bir sayfaya, kalıcı bilgi/karar için kısa metin.
 - remember: kalıcı tercih/ders/kişi-proje bilgisi (kind: memory|lesson|person|project); ruh/üslupla ilgili şey yazma.
+- followup_mail: yalnızca başkalarına İLETİLMESİ gereken kararlar/aksiyonlar varsa, katılımcılara kısa bir takip maili TASLAĞI (to: yalnızca KATILIMCILAR listesinden adlar; points: 2-6 kısa madde). Mail GÖNDERİLMEZ; taslak metni kullanıcı kopyalar.
 - Her önerinin "neden" alanında transkriptteki dayanağı kısaca yaz.
 - Çıktı: SADECE tek bir JSON, başka bir şey yazma:
 {"ozet":"3-6 cümle","konular":["..."],"kararlar":["..."],"aksiyonlar":[{"kim":"ad ya da ''","ne":"...","ne_zaman":"... ya da ''"}],
- "oneriler":[{"tur":"create_card|update_card|wiki_meeting_page|wiki_append|remember","baslik":"tek satır","neden":"dayanak",
+ "oneriler":[{"tur":"create_card|update_card|wiki_meeting_page|wiki_append|remember|followup_mail","baslik":"tek satır","neden":"dayanak",
    "veri":{ create_card: {"title","description","priority":"low|medium|high|critical","due_date":"YYYY-AA-GG ya da null","requested_by","project","status":"inbox|todo"} |
             update_card: {"card_id":"[ab12cd34]","note","status":"todo|doing|waiting|review ya da null","due_date":null,"waiting_on":null} |
-            wiki_meeting_page: {"project_slug":"slug ya da null"} | wiki_append: {"slug","heading","text"} | remember: {"kind","content","importance":1-5} }}]}
+            wiki_meeting_page: {"project_slug":"slug ya da null"} | wiki_append: {"slug","heading","text"} | remember: {"kind","content","importance":1-5} |
+            followup_mail: {"to":["katılımcı adı"],"subject":"konu","points":["madde"]} }}]}
 
 TOPLANTI: ${clip(a.m.title, 150)}
 KATILIMCILAR: ${a.m.attendees.join(', ') || '(bilinmiyor)'}
@@ -80,6 +82,8 @@ export interface ProposalContext {
   wikiSlugs: Set<string>;
   projectSlugs: Set<string>;
   projectNames: Map<string, string>;
+  /** Toplantı katılımcıları (takip maili alıcıları yalnızca bunlardan seçilir) */
+  attendees?: string[];
 }
 
 /** Modelin önerilerini şemaya göre doğrular; geçersiz/uydurma kimlik ve slug içerenleri atar. */
@@ -130,6 +134,13 @@ export function validateProposals(raw: unknown[], ctx: ProposalContext): Meeting
       if (!ctx.wikiSlugs.has(slug) || !text) continue;
       payload = { slug, heading: clip(v.heading, 80), text };
       title ||= `Wiki'ye ekle: ${slug}`;
+    } else if (kind === 'followup_mail') {
+      const att = ctx.attendees ?? [];
+      const to = (Array.isArray(v.to) ? v.to : []).filter((n): n is string => typeof n === 'string').map((n) => att.find((a) => sameName(a, n))).filter((n): n is string => Boolean(n));
+      const points = (Array.isArray(v.points) ? v.points : []).filter((n): n is string => typeof n === 'string').map((n) => clip(n, 300)).filter(Boolean).slice(0, 8);
+      if (!to.length || points.length < 1) continue; // alıcı yalnızca gerçek katılımcılardan; boş taslak yok
+      payload = { to: [...new Set(to)].slice(0, 6), subject: clip(v.subject, 120), points };
+      title ||= `Takip maili taslağı: ${[...new Set(to)].slice(0, 3).join(', ')}`;
     } else if (kind === 'remember') {
       const k = MEMORY_KINDS_OK.find((z) => z === v.kind);
       const content = clip(v.content, 400);
@@ -147,7 +158,16 @@ export function validateProposals(raw: unknown[], ctx: ProposalContext): Meeting
   return out;
 }
 
-const KIND_TR: Record<ProposalKind, string> = { create_card: '🗂️ Kart aç', update_card: '📝 Karta not', wiki_meeting_page: '📚 Wiki sayfası', wiki_append: '📚 Wiki\'ye ekle', remember: '🧠 Hafızaya al' };
+/** Takip maili taslak metni (saf, modelsiz): selamlama + maddeler + imza. Gönderilmez. */
+export function followupDraft(meetingTitle: string, payload: Record<string, unknown>, userName: string): string {
+  const to = (Array.isArray(payload.to) ? payload.to : []).filter((x): x is string => typeof x === 'string');
+  const points = (Array.isArray(payload.points) ? payload.points : []).filter((x): x is string => typeof x === 'string');
+  const subject = typeof payload.subject === 'string' && payload.subject ? payload.subject : `${meetingTitle} — toplantı notları`;
+  const first = to.map((n) => n.split(/\s+/)[0]).join(', ');
+  return [`Konu: ${subject}`, '', `Merhaba ${first || 'herkese'},`, '', `“${meetingTitle}” için kısa notlar:`, ...points.map((x) => `- ${x}`), '', 'Eksik ya da yanlış bir şey görürseniz lütfen haber verin.', '', 'İyi çalışmalar,', userName].join('\n');
+}
+
+const KIND_TR: Record<ProposalKind, string> = { create_card: '🗂️ Kart aç', update_card: '📝 Karta not', wiki_meeting_page: '📚 Wiki sayfası', wiki_append: '📚 Wiki\'ye ekle', remember: '🧠 Hafızaya al', followup_mail: '✉️ Takip maili taslağı' };
 
 /** Sohbetteki "toplantı hazır" mesajı (Güneş sorar; kullanıcı konuşarak ya da panelden onaylar) */
 export function nudgeMessage(title: string, analysis: MeetingAnalysis, proposals: MeetingProposal[]) {
@@ -190,6 +210,7 @@ export async function analyzeMeeting(id: string, opts: { notify?: boolean } = {}
       wikiSlugs: new Set(metas.map((p) => p.slug)),
       projectSlugs: new Set(metas.filter((p) => p.kind === 'project').map((p) => p.slug)),
       projectNames: new Map(projects.map((p) => [foldName(p.name), p.name])),
+      attendees: m.attendees,
     });
     let saved: Meeting;
     try {
@@ -273,6 +294,10 @@ async function exec(store: Store, m: Meeting, p: MeetingProposal): Promise<strin
       await exportWiki(store).catch(() => {});
       return `Wiki'ye eklendi: [[${page.slug}]]`;
     }
+    case 'followup_mail': {
+      // YALNIZCA metin üretir: mail gönderilmez, Outlook'a taslak bile yazılmaz. Kullanıcı kopyalar.
+      return 'Taslak hazır (gönderilmez, aşağıdan kopyalayın)';
+    }
     case 'remember': {
       const mem = await store.createMemory({ kind: pl.kind, content: String(pl.content), importance: Number(pl.importance) || 3, source: { meeting: m.id, title: m.title } });
       return `Hafızaya alındı (${mem.kind})`;
@@ -293,7 +318,8 @@ export async function applyProposal(meetingId: string, proposalId: string): Prom
   if (i < 0) throw new MeetingError('Öneri bulunamadı.', 404);
   if (list[i]!.status !== 'pending') throw new MeetingError('Bu öneri zaten işlendi.', 409);
   try {
-    list[i] = { ...list[i]!, status: 'applied', result: await exec(store, m, list[i]!) };
+    const done = await exec(store, m, list[i]!);
+    list[i] = { ...list[i]!, status: 'applied', result: done, ...(list[i]!.kind === 'followup_mail' ? { draft: followupDraft(m.title, list[i]!.payload, config.userName) } : {}) };
   } catch (e) {
     list[i] = { ...list[i]!, status: 'failed', result: (e as Error).message.slice(0, 200) };
   }

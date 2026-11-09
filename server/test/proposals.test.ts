@@ -104,3 +104,24 @@ test('Güneş\'in sorusu: özet, kararlar, numaralı öneriler ve nasıl yanıtl
   assert.match(none, /iş çıkmadı/);
   assert.doesNotMatch(none, /Önerilerim/);
 });
+
+import { followupDraft } from '../src/meetings/proposals.js';
+test('takip maili önerisi: alıcılar yalnızca gerçek katılımcılardan; boş madde/alıcı atılır', () => {
+  const ctx = { cards: [], wikiSlugs: new Set<string>(), projectSlugs: new Set<string>(), projectNames: new Map<string, string>(), attendees: ['Ali Veli', 'Özer Kaya'] };
+  const ok = validateProposals([{ tur: 'followup_mail', baslik: '', neden: 'x', veri: { to: ['Ali Veli', 'Yabancı Kişi', 'özer kaya'], subject: 'IFF notları', points: ['Araç tipi boş kalacak', '  ', 5 as never] } }], ctx);
+  assert.equal(ok.length, 1);
+  assert.deepEqual(ok[0]!.payload.to, ['Ali Veli', 'Özer Kaya']); // uydurma alıcı elendi, ad katılımcı yazımına çevrildi
+  assert.deepEqual(ok[0]!.payload.points, ['Araç tipi boş kalacak']);
+  assert.match(ok[0]!.title, /Takip maili taslağı/);
+  assert.equal(validateProposals([{ tur: 'followup_mail', veri: { to: ['Kimse'], points: ['a'] } }], ctx).length, 0); // alıcı yok
+  assert.equal(validateProposals([{ tur: 'followup_mail', veri: { to: ['Ali Veli'], points: [] } }], ctx).length, 0); // madde yok
+  assert.equal(validateProposals([{ tur: 'followup_mail', veri: { to: ['Ali Veli'], points: ['a'] } }], { ...ctx, attendees: undefined }).length, 0); // katılımcı bilinmiyorsa önerilmez
+});
+test('takip maili taslağı: metin üretir, gönderme/yazma yok; selamlama ve imza var', () => {
+  const t = followupDraft('IFF toplantısı', { to: ['Ali Veli', 'Özer Kaya'], subject: 'IFF notları', points: ['Karar 1', 'Karar 2'] }, 'Yıldıray Sürmen');
+  assert.match(t, /^Konu: IFF notları/);
+  assert.match(t, /Merhaba Ali, Özer,/);
+  assert.match(t, /- Karar 1\n- Karar 2/);
+  assert.match(t, /Yıldıray Sürmen$/);
+  assert.match(followupDraft('X', {}, 'Ben'), /Merhaba herkese,/);
+});

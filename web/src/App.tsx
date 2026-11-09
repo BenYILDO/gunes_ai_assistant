@@ -36,6 +36,8 @@ import { NudgePopup } from './components/NudgePopup';
 import { Inbox, type InboxProposal } from './components/Inbox';
 import { PetCompanion } from './components/PetCompanion';
 import { PetButton, PetPanel } from './components/PetPanel';
+import { WeeklyRecap } from './components/WeeklyRecap';
+import { isRecapWindow } from './lib/recap';
 import { classifyNudge, hideUntil, inQuietHours, isHidden, loadHidden, pruneHidden, saveHidden, shouldPopup } from './lib/inbox';
 import { useSettings } from './lib/settings';
 import { Sky } from './components/Sky';
@@ -612,6 +614,7 @@ export default function App() {
                   proposalCount={inboxProposals.reduce((s, p) => s + p.count, 0)}
                   onTalkNudge={talkNudge}
                   onGoMeetings={() => setView('meetings')}
+                  recap={isRecapWindow(new Date()) ? <WeeklyRecap cards={cards} meetings={meetingList.data ?? []} achievements={pet.data?.enabled ? pet.data.achievements : {}} /> : undefined}
                 />
               </motion.div>
             )}

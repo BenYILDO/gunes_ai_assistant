@@ -21,7 +21,7 @@ export function FocusPanel({ onOpenCard }: { onOpenCard: (id: string) => void })
         right={
           <div className="flex rounded-lg border border-line p-0.5 text-[11px]">
             {(['today', 'tomorrow'] as const).map((k) => (
-              <button key={k} onClick={() => setDay(k)} className={`rounded-md px-2 py-0.5 ${day === k ? 'bg-white/[0.1] text-ink' : 'text-ink-faint hover:text-ink-dim'}`}>
+              <button key={k} onClick={() => setDay(k)} className={`rounded-md px-2.5 py-1 ${day === k ? 'bg-white/[0.1] text-ink' : 'text-ink-faint hover:text-ink-dim'}`}>
                 {k === 'today' ? 'Bugün' : 'Yarın'}
               </button>
             ))}
