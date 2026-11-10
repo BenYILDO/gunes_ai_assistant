@@ -10,7 +10,7 @@ import { config } from '../config.js';
 import { getStore } from '../store/index.js';
 import type { Meeting } from '../store/types.js';
 import { earnPet } from '../pet.js';
-import { cancelMeeting, finalizeMeeting, MeetingError, meetingDir, SAFE_MEETING_ID, nameSpeaker, processMeeting, relabelSpeaker, removeMeetingFiles, transcriptText } from './pipeline.js';
+import { cancelMeeting, editCues, finalizeMeeting, MeetingError, meetingDir, SAFE_MEETING_ID, nameSpeaker, processMeeting, relabelSpeaker, removeMeetingFiles, transcriptText } from './pipeline.js';
 import { meetingTools } from './tools.js';
 import { callWatcher } from './callwatch.js';
 import { startLiveMeeting } from './live.js';
@@ -274,6 +274,11 @@ export function meetingsRouter() {
   r.post('/:id/name', wrap(async (req, res) => {
     const m = await nameSpeaker(idOf(req), str(req.body?.speakerId, 60), str(req.body?.name, 80));
     res.json(full(m));
+  }));
+  // Transkript satırı düzeltme (Güneş'in sohbet aracı ve arayüz): özgün metin `raw`da kalır
+  r.patch('/:id/cues', wrap(async (req, res) => {
+    const edits = Array.isArray(req.body?.edits) ? (req.body.edits as { index?: unknown; text?: unknown }[]).map((e) => ({ index: Number(e?.index), text: typeof e?.text === 'string' ? e.text : '' })) : [];
+    res.json(full(await editCues(idOf(req), edits)));
   }));
   r.post('/:id/relabel', wrap(async (req, res) => {
     res.json(full(await relabelSpeaker(idOf(req), str(req.body?.from, 80), str(req.body?.to, 80))));

@@ -67,6 +67,9 @@ export const GUNES_WRITE_TOOLS = [
 /** Araştırmacı (mail taslağı için bilgi toplayan Haiku): yalnızca OKUMA. */
 export const GUNES_READ_TOOLS = ['search_knowledge', 'search_events', 'search_chats', 'wiki_index', 'wiki_read', 'wiki_search', 'recall', 'get_card', 'list_board'];
 
+/** Toplantı incelemesi araçları: yalnızca SOHBETTE (kullanıcı konuşurken) açık; ajanlar/araştırmacı çağıramaz */
+export const MEETING_CHAT_TOOLS = ['list_meetings', 'read_meeting', 'meeting_name_speaker', 'meeting_relabel', 'meeting_edit_lines', 'meeting_analyze', 'meeting_apply_proposal', 'meeting_skip_proposal', 'meeting_finalize'];
+
 /** Güneş MCP sunucusunun tüm araçları */
 const GUNES_ALL = 'mcp__gunes';
 /** Her ön ayar için izin verilen / yasaklanan araçlar. */
@@ -74,7 +77,7 @@ export function toolPreset(preset: ToolPreset) {
   const read = M365_READ_TOOLS.map(m365);
   const forbidden = [...M365_FORBIDDEN_TOOLS.map(m365), 'Bash', 'PowerShell', 'Edit', 'Write', 'NotebookEdit'];
   /** Sadece sohbete açık araçlar: ajanlar tarama başlatıp döngüye girmesin, silme önermesin. */
-  const chatOnly = [gunesTool('start_scan'), gunesTool('propose_deletion'), gunesTool('end_day'), gunesTool('compose_mail')];
+  const chatOnly = [gunesTool('start_scan'), gunesTool('propose_deletion'), gunesTool('end_day'), gunesTool('compose_mail'), ...MEETING_CHAT_TOOLS.map(gunesTool)];
   /** Sohbette Güneş zaten konuşuyor; kendine dürtme göndermesin */
   const agentOnly = [gunesTool('nudge_user')];
   switch (preset) {

@@ -2,7 +2,7 @@ import './env.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { buildPlanPrompt, buildResearchPrompt, buildWritePrompt, parsePlan, MAX_QUESTIONS } from '../src/compose.js';
-import { toolPreset, GUNES_READ_TOOLS, GUNES_WRITE_TOOLS } from '../src/claude/runner.js';
+import { toolPreset, GUNES_READ_TOOLS, GUNES_WRITE_TOOLS, MEETING_CHAT_TOOLS } from '../src/claude/runner.js';
 import { gunesTool, m365, M365_DRAFT_TOOLS, M365_FORBIDDEN_TOOLS, M365_READ_TOOLS } from '../src/config.js';
 
 test('araştırmacı (Haiku) yalnızca okuma araçlarına sahip: hiçbir Güneş yazma aracı açık değil', () => {
@@ -30,7 +30,7 @@ test('yazma araçları listesi gerçek MCP araç adlarını kapsıyor (yeni yazm
   const src = readFileSync(new URL('../src/mcp.ts', import.meta.url), 'utf8');
   const names = [...src.matchAll(/server\.registerTool\(\s*'([a-z_]+)'/g)].map((m) => m[1]!);
   assert.ok(names.length > 20, 'MCP araçları okunamadı');
-  const known = new Set<string>([...GUNES_WRITE_TOOLS, ...GUNES_READ_TOOLS, 'list_unprocessed_events', 'nudge_user', 'start_scan', 'end_day', 'propose_deletion', 'compose_mail']);
+  const known = new Set<string>([...GUNES_WRITE_TOOLS, ...GUNES_READ_TOOLS, 'list_unprocessed_events', 'nudge_user', 'start_scan', 'end_day', 'propose_deletion', 'compose_mail', ...MEETING_CHAT_TOOLS]);
   const unknown = names.filter((n) => !known.has(n));
   assert.deepEqual(unknown, [], `GUNES_WRITE_TOOLS/READ_TOOLS dışında kalan araç(lar): ${unknown.join(', ')}`);
 });

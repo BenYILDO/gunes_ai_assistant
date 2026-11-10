@@ -1,3 +1,4 @@
+import { formatMeetingOverview } from './meetings/review.js';
 import { randomUUID } from 'node:crypto';
 import type { Request, Response } from 'express';
 import { config } from './config.js';
@@ -9,6 +10,15 @@ import { markSeen } from './nudges.js';
 import { getStore } from './store/index.js';
 
 const TOOL_TR: Record<string, string> = {
+  list_meetings: 'Toplantılara bakıyor',
+  read_meeting: 'Toplantıyı okuyor',
+  meeting_name_speaker: 'Sesi adlandırıyor',
+  meeting_relabel: 'Konuşmacıyı düzeltiyor',
+  meeting_edit_lines: 'Transkripti düzeltiyor',
+  meeting_analyze: 'Özet ve önerileri yeniliyor',
+  meeting_apply_proposal: 'Öneriyi uyguluyor',
+  meeting_skip_proposal: 'Öneriyi geçiyor',
+  meeting_finalize: 'İncelemeyi bitiriyor',
   outlook_email_search: 'Outlook\'ta arıyor',
   outlook_calendar_search: 'Takvime bakıyor',
   chat_message_search: 'Teams\'te arıyor',
@@ -46,7 +56,7 @@ const TOOL_TR: Record<string, string> = {
 const lastRef = new Map<string, string>();
 
 interface ChatRef {
-  kind: 'card' | 'wiki';
+  kind: 'card' | 'wiki' | 'meeting';
   id: string;
   title: string;
 }
@@ -75,6 +85,11 @@ async function refContext(ref: ChatRef): Promise<string | null> {
     ]
       .filter(Boolean)
       .join('\n');
+  }
+  if (ref.kind === 'meeting') {
+    const m = await store.getMeeting(ref.id);
+    if (!m) return null;
+    return [`Kullanıcı Toplantılar ekranında şu TOPLANTIYI inceliyor; mesajı büyük ihtimalle bu toplantıyla ilgili ("bu toplantı", "sesler", "özet" derse bu):`, formatMeetingOverview(m), '(Ayrıntı için read_meeting; transkript satırları için part="transcript".)'].join('\n');
   }
   const p = await store.getWikiPage(ref.id);
   if (!p) return null;
@@ -112,7 +127,7 @@ export async function chatHandler(req: Request, res: Response) {
   if (!session) session = await store.createChatSession(randomUUID(), message.slice(0, 60));
   send({ type: 'session', id: session.id, title: session.title });
   const ref = req.body?.ref && typeof req.body.ref.id === 'string' ? (req.body.ref as ChatRef) : null;
-  const refTag = ref ? `ref:${ref.kind === 'card' ? 'Kart' : 'Wiki'}: ${String(ref.title).slice(0, 120)}` : null;
+  const refTag = ref ? `ref:${ref.kind === 'card' ? 'Kart' : ref.kind === 'meeting' ? 'Toplantı' : 'Wiki'}: ${String(ref.title).slice(0, 120)}` : null;
   await store.addChatMessage({ session_id: session.id, role: 'user', content: message, tools: refTag ? [refTag] : [] });
 
   // Seçili bağlam: bu sohbette ilk kez ya da değiştiyse mesajın önüne eklenir

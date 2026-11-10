@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { AlertTriangle, CalendarClock, Sparkles, CheckCircle2, Download, FileAudio, FolderOpen, Headphones, Link2, Loader2, Mic, Play, Radio, RotateCw, ShieldAlert, Square, Trash2, Upload, Users, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { api, type CalendarMeeting, type MeetingItem, type MeetingProposal, type MeetingStatus, type WikiPageMeta } from '../lib/api';
+import { api, type ChatRef, type CalendarMeeting, type MeetingItem, type MeetingProposal, type MeetingStatus, type WikiPageMeta } from '../lib/api';
 import { usePoll } from '../lib/hooks';
 import { callerLine, useCall } from '../lib/callState';
 import { liveCapture, liveSupported, useLive } from '../lib/liveCapture';
@@ -54,7 +54,7 @@ function Select({ value, onChange, children, className = '' }: { value: string; 
 }
 
 /** Toplantılar: canlı dinle, kayıt ekle, konuşmacıları adlandır, özetle ve wiki'ye bağla. */
-export function MeetingsView({ projects, onOpenWiki }: { projects: WikiPageMeta[]; onOpenWiki: (slug: string) => void }) {
+export function MeetingsView({ projects, onOpenWiki, onAsk, onFocusMeeting }: { projects: WikiPageMeta[]; onOpenWiki: (slug: string) => void; onAsk?: (text: string, ref: ChatRef) => void; onFocusMeeting?: (ref: ChatRef | null) => void }) {
   const toast = useToast();
   const live = useLive();
   const callNow = useCall(live.active).call;
@@ -349,6 +349,8 @@ export function MeetingsView({ projects, onOpenWiki }: { projects: WikiPageMeta[
 
       <MeetingDetail
         id={openId}
+        onAsk={onAsk}
+        onFocusMeeting={onFocusMeeting}
         retentionDays={tools.data?.audioRetentionDays ?? 30}
         projects={projectPages}
         onClose={() => setOpenId(null)}
@@ -366,7 +368,7 @@ export function MeetingsView({ projects, onOpenWiki }: { projects: WikiPageMeta[
 }
 
 // ======================================================================
-function MeetingDetail({ id, projects, retentionDays, onClose, onChanged, onOpenWiki }: { id: string | null; projects: WikiPageMeta[]; retentionDays: number; onClose: () => void; onChanged: () => void; onOpenWiki: (slug: string) => void }) {
+function MeetingDetail({ id, projects, retentionDays, onClose, onChanged, onOpenWiki, onAsk, onFocusMeeting }: { id: string | null; projects: WikiPageMeta[]; retentionDays: number; onClose: () => void; onChanged: () => void; onOpenWiki: (slug: string) => void; onAsk?: (text: string, ref: ChatRef) => void; onFocusMeeting?: (ref: ChatRef | null) => void }) {
   const toast = useToast();
   const [m, setM] = useState<MeetingItem | null>(null);
   const [proj, setProj] = useState('');
@@ -379,6 +381,22 @@ function MeetingDetail({ id, projects, retentionDays, onClose, onChanged, onOpen
   const [showAll, setShowAll] = useState(false);
   const alive = useRef(true);
   useEffect(() => () => void (alive.current = false), []);
+  // Açık toplantı sohbetin bağlamı olur ("bu toplantı" demek yeter); kapanınca bağlam kalkar
+  useEffect(() => {
+    if (!id) return;
+    onFocusMeeting?.(m ? { kind: 'meeting', id, title: m.title } : null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, m?.title]);
+  useEffect(() => () => onFocusMeeting?.(null), []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Güneş sohbette sesleri adlandırır/satırları düzeltir/önerileri uygular: pencere kendiliğinden tazelenir
+  useEffect(() => {
+    if (!id) return;
+    const t = setInterval(() => {
+      if (document.visibilityState === 'visible' && !busy) void load();
+    }, 4000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, busy]);
   // Esc ile kapanır (klavye kullanıcıları ve genel beklenti)
   useEffect(() => {
     if (!id) return;
@@ -557,6 +575,28 @@ function MeetingDetail({ id, projects, retentionDays, onClose, onChanged, onOpen
             Tüm ayrıntıları göster
           </button>
         </div>
+
+        {/* Güneş'le birlikte: sohbet bu toplantıyı görür, sesleri adlandırabilir, satırları düzeltebilir, adımları ilerletebilir */}
+        {onAsk && (
+          <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-[color:var(--accent)]/25 bg-[color:var(--accent)]/[0.06] px-3 py-2">
+            <Sparkles size={13} className="text-accent" />
+            <span className="text-[11px] text-ink-dim">Güneş'le birlikte:</span>
+            {[
+              { t: 'İncele', q: 'Bu toplantıyı birlikte inceleyelim: önce sesleri, sonra yanlış duyulmuş yerleri kontrol et, özeti yenile ve önerileri anlat.' },
+              ...(unknown.length > 0 ? [{ t: `Sesleri adlandıralım (${unknown.length})`, q: 'Bu toplantıdaki tanınmayan sesleri birlikte adlandıralım. Her sesin konuşmalarına bakıp kim olabileceğini söyle.' }] : []),
+              { t: 'Yanlış duyulanları bul', q: 'Transkriptte yanlış duyulmuş isim ve terimleri bul, düzeltme önerilerini göster; onayımla düzelt.' },
+              ...(pendingProps.length > 0 ? [{ t: 'Önerileri anlat', q: 'Güneş\'in önerilerini tek tek anlat; hangilerini uygulamanı istediğimi söyleyeceğim.' }] : []),
+            ].map((b) => (
+              <button
+                key={b.t}
+                onClick={() => onAsk(b.q, { kind: 'meeting', id: m.id, title: m.title })}
+                className="rounded-full border border-line bg-white/[0.05] px-2.5 py-1 text-[11px] text-ink hover:border-[color:var(--accent)]/50"
+              >
+                {b.t}
+              </button>
+            ))}
+          </div>
+        )}
 
         {cur.id === 'voices' && (
           <div className="space-y-2">

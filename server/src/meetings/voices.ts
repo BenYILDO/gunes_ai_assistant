@@ -22,6 +22,15 @@ export function foldName(s: string) {
     .replace(/\s+/g, ' ')
     .trim();
 }
+/**
+ * Kullanıcının elle yazdığı "(Ben)" gibi işaretleri addan çıkarır ("Yıldıray Sürmen (Ben)" → "Yıldıray Sürmen").
+ * Yalnızca tek sözcük kalırsa ve o sözcük kullanıcının adının ilk sözcüğüyse tam adı döner.
+ */
+export function cleanPersonName(name: string, userName = '') {
+  const c = name.replace(/\s*[([]\s*(ben|ben kendim|kendim|me|myself)\s*[)\]]\s*/gi, ' ').replace(/\s+/g, ' ').trim();
+  if (userName && c && !c.includes(' ') && foldName(c) === foldName(userName.split(/\s+/)[0] ?? '')) return userName;
+  return c;
+}
 const tokens = (s: string) => foldName(s).split(' ').filter((t) => t.length > 1);
 
 /** İki ad aynı kişi mi? ("Yildiray SURMEN" = "Yıldıray Sürmen"; tek sözcüklü ad yalnızca o ada eşleşir) */
@@ -87,7 +96,7 @@ export function recognize(vectors: CueVector[], profiles: VoiceProfile[], thresh
         best = p;
       }
     }
-    out.set(i, best && score >= threshold ? { speaker: best.name, score } : { speaker: null, score: best ? score : null });
+    out.set(i, best && score >= threshold ? { speaker: cleanPersonName(best.name), score } : { speaker: null, score: best ? score : null });
   }
   return out;
 }

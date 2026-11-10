@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowUp, BookOpen, ChevronDown, Loader2, MessageSquarePlus, Paperclip, SquareKanban, Square, Trash2, X } from 'lucide-react';
+import { ArrowUp, BookOpen, ChevronDown, Headphones, Loader2, MessageSquarePlus, Paperclip, SquareKanban, Square, Trash2, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { api, streamChat, type ChatMessage, type ChatRef, type ChatSession } from '../lib/api';
 import { relTime, type Phase } from '../lib/time';
@@ -28,7 +28,7 @@ interface LiveMsg extends Omit<ChatMessage, 'id' | 'created_at'> {
   live?: boolean;
 }
 
-const refTag = (r: ChatRef) => `ref:${r.kind === 'card' ? 'Kart' : 'Wiki'}: ${r.title}`;
+const refTag = (r: ChatRef) => `ref:${r.kind === 'card' ? 'Kart' : r.kind === 'meeting' ? 'Toplantı' : 'Wiki'}: ${r.title}`;
 
 const STARTERS = [
   'Bugün neye odaklanmalıyım?',
@@ -338,8 +338,8 @@ export function ChatPanel({ open, phase, userName, onClose, onActivity, focusSes
                     className="mb-2 overflow-hidden"
                   >
                     <div className="flex items-center gap-2 rounded-xl border border-[color:var(--accent)]/35 bg-[color:var(--accent)]/10 px-2.5 py-1.5" title="Mesajınız bu konuyla ilgili olarak gönderilir">
-                      {chatRef.kind === 'card' ? <SquareKanban size={13} className="shrink-0 text-accent" /> : <BookOpen size={13} className="shrink-0 text-accent" />}
-                      <span className="shrink-0 text-[10.5px] uppercase tracking-wider text-accent">{chatRef.kind === 'card' ? 'Kart' : 'Wiki'}</span>
+                      {chatRef.kind === 'card' ? <SquareKanban size={13} className="shrink-0 text-accent" /> : chatRef.kind === 'meeting' ? <Headphones size={13} className="shrink-0 text-accent" /> : <BookOpen size={13} className="shrink-0 text-accent" />}
+                      <span className="shrink-0 text-[10.5px] uppercase tracking-wider text-accent">{chatRef.kind === 'card' ? 'Kart' : chatRef.kind === 'meeting' ? 'Toplantı' : 'Wiki'}</span>
                       <span className="min-w-0 flex-1 truncate text-xs text-ink">{chatRef.title}</span>
                       <button type="button" onClick={onClearRef} className="shrink-0 rounded p-0.5 text-ink-faint hover:bg-white/10 hover:text-ink" title="Referansı kaldır">
                         <X size={13} />

@@ -12,7 +12,7 @@ import type { EventItem, Meeting, MeetingCue, VoiceProfile } from '../store/type
 import { exportWiki, extractLinks, slugify } from '../wiki.js';
 import { run, meetingTools } from './tools.js';
 import { classifyCuesByChannel, ownLabel } from './channels.js';
-import { candidateProfiles, centroid, clusterUnknown, recognize, sameName, summarizeSpeakers, type CueVector, type VoiceCluster } from './voices.js';
+import { candidateProfiles, cleanPersonName, centroid, clusterUnknown, recognize, sameName, summarizeSpeakers, type CueVector, type VoiceCluster } from './voices.js';
 
 /** Kullanıcıya gösterilecek, HTTP durumu olan beklenen hata (404/400/409) */
 export class MeetingError extends Error {
@@ -245,7 +245,7 @@ export async function nameSpeaker(meetingId: string, speakerId: string, name: st
   const store = getStore();
   const m = await store.getMeeting(meetingId);
   if (!m) throw new MeetingError('Toplantı bulunamadı.', 404);
-  const clean = name.trim().replace(/\s+/g, ' ');
+  const clean = cleanPersonName(name.trim().replace(/\s+/g, ' '), config.userName);
   if (clean.length < 2) throw new MeetingError('İsim çok kısa.');
   const sp = m.speakers.find((s) => s.id === speakerId);
   if (!sp || sp.kind !== 'unknown' || !sp.embedding) throw new MeetingError('Bu ses zaten adlandırılmış ya da vektörü yok.', 409);
@@ -262,12 +262,30 @@ export async function nameSpeaker(meetingId: string, speakerId: string, name: st
   return store.updateMeeting(meetingId, { transcript: cues, speakers: summarizeSpeakers(cues, remaining) });
 }
 
+/** Transkript satırlarının metnini düzeltir (özgün metin `raw`da saklanır). En çok 25 satır; boş/aşırı uzun metin reddedilir. */
+export async function editCues(meetingId: string, edits: { index: number; text: string }[]) {
+  const store = getStore();
+  const m = await store.getMeeting(meetingId);
+  if (!m) throw new MeetingError('Toplantı bulunamadı.', 404);
+  if (['recording', 'queued', 'processing'].includes(m.status)) throw new MeetingError('Toplantı işlenirken düzenlenemez.', 409);
+  if (!Array.isArray(edits) || !edits.length || edits.length > 25) throw new MeetingError('1-25 satır düzeltilebilir.');
+  const byIndex = new Map<number, string>();
+  for (const e of edits) {
+    if (!Number.isInteger(e?.index) || e.index < 0 || e.index >= m.transcript.length) throw new MeetingError(`Satır yok: ${String(e?.index)}.`);
+    const t = typeof e.text === 'string' ? e.text.replace(/\s+/g, ' ').trim() : '';
+    if (!t || t.length > 800) throw new MeetingError(`Satır ${e.index}: metin boş ya da 800 karakterden uzun.`);
+    byIndex.set(e.index, t);
+  }
+  const cues = m.transcript.map((c, i) => (byIndex.has(i) ? { ...c, text: byIndex.get(i)!, raw: c.raw ?? c.text } : c));
+  return store.updateMeeting(meetingId, { transcript: cues });
+}
+
 /** Yanlış tanınan kişiyi düzelt: bu toplantıdaki tüm satırların etiketi değişir (profil değişmez). */
 export async function relabelSpeaker(meetingId: string, from: string, to: string) {
   const store = getStore();
   const m = await store.getMeeting(meetingId);
   if (!m) throw new MeetingError('Toplantı bulunamadı.', 404);
-  const target = to.trim();
+  const target = cleanPersonName(to.trim(), config.userName);
   if (target.length < 2) throw new MeetingError('İsim çok kısa.');
   const cues = m.transcript.map((c) => (c.speaker === from ? { ...c, speaker: target } : c));
   const remaining: VoiceCluster[] = m.speakers.filter((s) => s.kind === 'unknown' && s.embedding).map((s) => ({ id: s.id, members: [], centroid: s.embedding! }));

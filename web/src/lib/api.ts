@@ -410,7 +410,7 @@ export type ChatStreamEvent =
 
 /** POST /api/chat SSE akışını okur. */
 export interface ChatRef {
-  kind: 'card' | 'wiki';
+  kind: 'card' | 'wiki' | 'meeting';
   id: string;
   title: string;
 }

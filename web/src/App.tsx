@@ -673,6 +673,11 @@ export default function App() {
                     setView('wiki');
                     setWikiJump((j) => ({ slug, n: (j?.n ?? 0) + 1 }));
                   }}
+                  onFocusMeeting={(r) => setChatRef((cur) => (r ? r : cur?.kind === 'meeting' ? null : cur))}
+                  onAsk={(text, r) => {
+                    setChatRef(r);
+                    sendToChat(text);
+                  }}
                 />
               </motion.div>
             )}

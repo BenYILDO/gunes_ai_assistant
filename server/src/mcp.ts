@@ -12,6 +12,7 @@ import { buildBoardContext, ensureSoul, formatEvents, STATUS_TR } from './agents
 import { extractLinks, slugify } from './wiki.js';
 import { createNudge, unseenIds } from './nudges.js';
 import { searchKnowledge } from './search.js';
+import { formatMeetingList, formatMeetingOverview, formatTranscript } from './meetings/review.js';
 import { appendFileSync } from 'node:fs';
 import { request as httpRequest } from 'node:http';
 import { join } from 'node:path';
@@ -854,6 +855,182 @@ server.registerTool(
   async ({ content }) => {
     await store.addJournal(content);
     return ok('Günlüğe yazıldı.');
+  },
+);
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Toplantı incelemesi (YALNIZCA sohbette açık): Güneş toplantıyı okur, sesleri adlandırır, yanlış satırları düzeltir, özet/öneri üretir ve
+// kullanıcı açıkça isterse sıradaki aşamaya ilerletir. İşler Güneş sunucusunun kendi API'siyle yapılır (doğrulamalar tek yerde).
+// ---------------------------------------------------------------------------------------------------------------------
+async function gunesApi<T = any>(method: string, path: string, body?: unknown, timeoutMs = 90_000): Promise<T> {
+  const res = await fetch(`http://127.0.0.1:${config.port}/api${path}`, {
+    method,
+    headers: { 'content-type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  const text = await res.text();
+  let j: any = null;
+  try {
+    j = JSON.parse(text);
+  } catch {
+    /* gövde JSON değil */
+  }
+  if (!res.ok) throw new Error(j?.error ?? `HTTP ${res.status}`);
+  return j as T;
+}
+/** 8 haneli kısa kimlik ya da tam kimlikle toplantıyı bul */
+async function findMeeting(idOrPrefix: string) {
+  const id = idOrPrefix.trim().replace(/[\[\]]/g, '').toLowerCase();
+  if (id.length < 4) throw new Error('Toplantı kimliği çok kısa.');
+  const list = await gunesApi<any[]>('GET', '/meetings');
+  const hits = list.filter((m) => String(m.id).toLowerCase().startsWith(id));
+  if (hits.length !== 1) throw new Error(hits.length ? 'Kimlik birden çok toplantıya uyuyor; daha uzun yaz.' : 'Toplantı bulunamadı (list_meetings ile bak).');
+  return hits[0].id as string;
+}
+const meetingErr = (e: unknown) => fail(e instanceof Error ? e.message : String(e));
+const meetingIdSchema = z.string().min(4).max(40).describe('Toplantının kısa kimliği (list_meetings çıktısındaki [abcd1234])');
+
+server.registerTool(
+  'list_meetings',
+  { description: 'Kayıtlı toplantıları listeler (yeniden eskiye): kimlik, başlık, durum, tanınmayan ses ve bekleyen öneri sayısı. Kullanıcı "az önceki toplantı / inceleme bekleyen toplantı" derse buradan bul.', inputSchema: { limit: z.number().int().min(1).max(30).default(10) } },
+  async ({ limit }) => {
+    try {
+      return ok(formatMeetingList(await gunesApi('GET', '/meetings'), limit));
+    } catch (e) {
+      return meetingErr(e);
+    }
+  },
+);
+
+server.registerTool(
+  'read_meeting',
+  {
+    description:
+      'Bir toplantıyı okur. part="overview": katılımcılar, tanınan/TANINMAYAN sesler, özet, kararlar, aksiyonlar, öneriler ve SIRADAKİ ADIM. part="transcript": satırlar indeksiyle (from_index\'ten limit kadar; düzeltmek için indeks gerekir). Önce overview ile başla; yanlış bilgi şüphesinde ilgili bölümün transkriptine bak.',
+    inputSchema: { meeting_id: meetingIdSchema, part: z.enum(['overview', 'transcript']).default('overview'), from_index: z.number().int().min(0).default(0), limit: z.number().int().min(1).max(120).default(60) },
+  },
+  async ({ meeting_id, part, from_index, limit }) => {
+    try {
+      const m = await gunesApi<any>('GET', `/meetings/${await findMeeting(meeting_id)}`);
+      return ok(part === 'overview' ? formatMeetingOverview(m) : formatTranscript(m, from_index, limit));
+    } catch (e) {
+      return meetingErr(e);
+    }
+  },
+);
+
+server.registerTool(
+  'meeting_name_speaker',
+  {
+    description:
+      'TANINMAYAN bir sesi (ör. "ses-2") bir kişiye atar ve o kişinin ses profilini oluşturur/güçlendirir. AYNI kişi birden çok ses olarak ayrışmışsa her birine AYNI adı ver: tek kişide ve tek profilde birleşirler. Kullanıcının kendi sesi için kullanıcının tam adını yaz ("(Ben)" gibi işaretler otomatik temizlenir). Adı kullanıcıdan ya da takvim katılımcılarından al; tahmin etme.',
+    inputSchema: { meeting_id: meetingIdSchema, speaker_id: z.string().min(3).max(40).describe('read_meeting çıktısındaki tanınmayan ses kimliği, örn. ses-2'), name: z.string().min(2).max(80) },
+  },
+  async ({ meeting_id, speaker_id, name }) => {
+    try {
+      const id = await findMeeting(meeting_id);
+      const m = await gunesApi<any>('POST', `/meetings/${id}/name`, { speakerId: speaker_id, name });
+      return ok(`Kaydedildi: ${speaker_id} → ${name}. Kalan tanınmayan ses: ${m.speakers.filter((s: any) => s.kind === 'unknown').length}.`);
+    } catch (e) {
+      return meetingErr(e);
+    }
+  },
+);
+
+server.registerTool(
+  'meeting_relabel',
+  {
+    description: 'Bu toplantıda YANLIŞ tanınmış bir kişinin tüm satırlarının etiketini değiştirir (ses profili değişmez). Örn. "Ali Veli" olarak etiketlenen satırlar aslında "Özer Kaya"ysa.',
+    inputSchema: { meeting_id: meetingIdSchema, from_name: z.string().min(2).max(80), to_name: z.string().min(2).max(80) },
+  },
+  async ({ meeting_id, from_name, to_name }) => {
+    try {
+      await gunesApi('POST', `/meetings/${await findMeeting(meeting_id)}/relabel`, { from: from_name, to: to_name });
+      return ok(`Bu toplantıdaki "${from_name}" satırları "${to_name}" olarak düzeltildi.`);
+    } catch (e) {
+      return meetingErr(e);
+    }
+  },
+);
+
+server.registerTool(
+  'meeting_edit_lines',
+  {
+    description:
+      'Transkriptte yanlış duyulmuş satırların METNİNİ düzeltir (en çok 25 satır; özgün metin saklanır). Yalnızca kullanıcının söylediği ya da bağlamdan KESİN olan düzeltmeleri yap (özel isim, terim); rakam/tutar/tarihi tahminle değiştirme. Düzeltmeden sonra özet eskidiyse meeting_analyze öner.',
+    inputSchema: { meeting_id: meetingIdSchema, edits: z.array(z.object({ index: z.number().int().min(0), text: z.string().min(1).max(800) })).min(1).max(25) },
+  },
+  async ({ meeting_id, edits }) => {
+    try {
+      await gunesApi('PATCH', `/meetings/${await findMeeting(meeting_id)}/cues`, { edits });
+      return ok(`${edits.length} satır düzeltildi (${edits.map((e) => e.index).join(', ')}). Özet bu düzeltmeleri henüz yansıtmıyor olabilir: meeting_analyze ile yenilenebilir.`);
+    } catch (e) {
+      return meetingErr(e);
+    }
+  },
+);
+
+server.registerTool(
+  'meeting_analyze',
+  {
+    description: 'Toplantının özetini, kararlarını, aksiyonlarını ve ÖNERİLERİNİ (kart/wiki/hafıza/takip maili taslağı) yeniden üretir (≈1 dk). Sesler adlandırıldıktan ve satırlar düzeltildikten SONRA çağır. Hiçbir öneri uygulanmaz; yalnızca üretilir.',
+    inputSchema: { meeting_id: meetingIdSchema },
+  },
+  async ({ meeting_id }) => {
+    try {
+      const m = await gunesApi<any>('POST', `/meetings/${await findMeeting(meeting_id)}/analyze`, {}, 6 * 60_000);
+      return ok(formatMeetingOverview(m));
+    } catch (e) {
+      return meetingErr(e);
+    }
+  },
+);
+
+server.registerTool(
+  'meeting_apply_proposal',
+  {
+    description:
+      'Bir ÖNERİYİ uygular (kart açar/not ekler, wiki\'ye yazar, hafızaya alır ya da takip maili TASLAĞI üretir; mail asla gönderilmez). YALNIZCA kullanıcı o öneriyi ya da "hepsini" uygulamanı bu sohbette AÇIKÇA söylediyse çağır; kendiliğinden uygulama. Önerinin kimliği read_meeting çıktısındaki [abcd1234].',
+    inputSchema: { meeting_id: meetingIdSchema, proposal_id: z.string().min(4).max(20), user_confirmed: z.literal(true).describe('Kullanıcı bu öneriyi uygulamamı açıkça istedi') },
+  },
+  async ({ meeting_id, proposal_id }) => {
+    try {
+      const m = await gunesApi<any>('POST', `/meetings/${await findMeeting(meeting_id)}/proposals/${encodeURIComponent(proposal_id)}/apply`, {});
+      const p = (m.proposals ?? []).find((x: any) => x.id === proposal_id);
+      return ok(`${p?.status === 'applied' ? 'Uygulandı' : 'Uygulanamadı'}: ${p?.result ?? ''}${p?.draft ? `\n\nTASLAK (gönderilmedi):\n${p.draft}` : ''}`);
+    } catch (e) {
+      return meetingErr(e);
+    }
+  },
+);
+
+server.registerTool(
+  'meeting_skip_proposal',
+  { description: 'Bir öneriyi geçer (uygulamaz). Kullanıcı "bunu geç / gerek yok" derse.', inputSchema: { meeting_id: meetingIdSchema, proposal_id: z.string().min(4).max(20) } },
+  async ({ meeting_id, proposal_id }) => {
+    try {
+      await gunesApi('POST', `/meetings/${await findMeeting(meeting_id)}/proposals/${encodeURIComponent(proposal_id)}/skip`, {});
+      return ok('Öneri geçildi.');
+    } catch (e) {
+      return meetingErr(e);
+    }
+  },
+);
+
+server.registerTool(
+  'meeting_finalize',
+  {
+    description: 'İncelemeyi bitirir: toplantının wiki sayfasını oluşturur/yeniler ve (varsa) projeye ve takvim kaydına bağlar. Kullanıcı "bitir / wiki\'ye bağla" derse çağır. Proje sayfası belliyse project_slug ver (wiki_index\'ten), değilse boş bırak.',
+    inputSchema: { meeting_id: meetingIdSchema, project_slug: z.string().max(120).optional() },
+  },
+  async ({ meeting_id, project_slug }) => {
+    try {
+      const m = await gunesApi<any>('POST', `/meetings/${await findMeeting(meeting_id)}/finalize`, project_slug ? { projectSlug: project_slug } : {}, 5 * 60_000);
+      return ok(`İnceleme tamam: wiki [[${m.wiki_slug}]].`);
+    } catch (e) {
+      return meetingErr(e);
+    }
   },
 );
 
