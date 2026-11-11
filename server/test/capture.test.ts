@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { mergeArgs, parseHelperLine, type NativeInfo } from '../src/meetings/capture.js';
 
-const info = (): NativeInfo => ({ meetingId: 'm', startedAt: 0, micOk: false, sysOk: 0, devices: [], error: null, fromCall: false, stopping: false });
+const info = (): NativeInfo => ({ meetingId: 'm', startedAt: 0, micOk: false, sysOk: 0, devices: [], error: null, fromCall: false, inPerson: false, stopping: false });
 
 test('yardımcı program satırları: cihazlar, mikrofon/çıkış durumu, READY/DONE', () => {
   const i = info();

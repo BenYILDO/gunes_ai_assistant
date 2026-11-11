@@ -31,7 +31,7 @@ export function LivePill({ onOpen }: { onOpen: () => void }) {
             <span className="relative inline-flex h-2 w-2 rounded-full bg-[color:var(--danger)]" />
           </span>
           <button onClick={onOpen} className="max-w-[220px] truncate hover:text-accent" title="Toplantılar paneline git">
-            Dinliyorum · {live.title}{who ? ` · ${who}` : ''} · {clock}
+            Dinliyorum{live.inPerson ? ' (yüz yüze)' : ''} · {live.title}{who ? ` · ${who}` : ''} · {clock}
           </button>
           <button disabled={live.stopping} onClick={() => void liveCapture.stop()} className="inline-flex items-center gap-1 rounded-full border border-line bg-white/[0.07] px-2.5 py-1 hover:bg-white/[0.14] disabled:opacity-50">
             <Square size={10} /> Bitir

@@ -55,6 +55,14 @@ Kullanıcı "inceleme bekliyor" adımlarını **Güneş sohbetinden** ilerletebi
 - **Arayüz**: açık toplantı penceresi sohbetin bağlamı olur (`ChatRef.kind='meeting'`, Headphones rozeti), "Güneş'le birlikte" düğmeleri hazır istem gönderir, pencere sohbet değişikliklerini **4 sn'de bir tazeleyerek** gösterir (`MeetingDetail`, `App.tsx` `onAsk`/`onFocusMeeting`).
 - Doğrulama durumu: birim testleri (biçimlendirici, izin, `user_confirmed`, düzenleme) ve typecheck/build temiz; **gerçek `claude` CLI ile uçtan uca sohbet akışı ve görsel tarayıcı denemesi yapılmadı**.
 
+## 8b. Yüz yüze toplantı (manuel dinleme)
+Toplantılar → "Yüz yüze" sekmesi. **Akış**: ad/proje/odadakiler → "Dinlemeye başla" (sesli duyuru AYARLARDAN açıksa "Duyuruyu yap ve dinle": varsayılan KAPALI, `inPersonAnnounce`) → tam ekran duyuru (Güneş sesli okur, metin ekranda; en az 4 sn; "Duyuruyu geç"/"Vazgeç") → duyuru BİTTİKTEN sonra `POST /api/meetings/inperson` → "Sizi dinliyorum" ekranı (sayaç, "Bitir ve işle", "Kaydı at") → bitince (duyuru açıksa) kısa teşekkür sesi → AYNI toplantı hattı (`finishNative` → `processMeeting` → refine/analiz → sihirbaz); listede `in_person` etiketi.
+- **Yalnız mikrofon**: `startNative(..., {inPerson:true})` → `ses-yakala.ps1 -NoSys` (loopback yok; Güneş'in kendi hoparlör sesi ve başka sesler kayda girmez). `capture.wav` tek kanal.
+- **İşaret**: şema değişmedi; `yuzyuze.flag` dosyası (`markInPerson`/`isInPerson`, `pipeline.ts`). Varlığında `classifyCuesByChannel` ATLANIR; "kendi ses" yalnız ses profilinden gelir.
+- **Odadakiler** (`attendees`, `live.ts`): ses tanıma `candidateProfiles` ile bu kişilerle daraltılır.
+- **Metin**: `web/src/lib/inperson.ts` (`DEFAULT_GREETING`, `greetingText`, `parseNames`); ayarlar `inPersonAnnounce`, `inPersonText` (`lib/settings.ts`, `{ad}` yer tutucu). Arayüz: `InPersonPanel.tsx` (`InPersonLauncher`, `InPersonLive`); `LiveState.inPerson`, `liveCapture.startInPerson/discard`. `/live/status` `inPerson` döner; `LivePill` "(yüz yüze)" yazar.
+- Testler: `server/test/inperson.test.ts`, `web/test/inperson.test.ts`.
+
 ## 9. Toplantı öncesi / sonrası
 `prep` işi (`scheduler.ts`): toplantıdan ~40 dk önce başlar, 30 dk önce hazır olur; `meetingPrepPrompt` + `context.ts` (`relatedMeetings`, `previousMeetingsContext`: geçmiş toplantıların karar/aksiyon/bekleyen önerileri); belirsizlikte "Size sorularım". **Haftalık rapor** haftanın toplantı kararlarını içerir (`weekMeetingsContext`). Bugün ekranında `NextUp.tsx` sıradaki toplantıyı, geri sayımı ve hazırlık notunu gösterir.
 

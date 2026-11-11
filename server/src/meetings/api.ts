@@ -10,7 +10,7 @@ import { config } from '../config.js';
 import { getStore } from '../store/index.js';
 import type { Meeting } from '../store/types.js';
 import { earnPet } from '../pet.js';
-import { cancelMeeting, editCues, finalizeMeeting, MeetingError, meetingDir, SAFE_MEETING_ID, nameSpeaker, processMeeting, relabelSpeaker, removeMeetingFiles, transcriptText } from './pipeline.js';
+import { cancelMeeting, editCues, finalizeMeeting, isInPerson, MeetingError, meetingDir, SAFE_MEETING_ID, nameSpeaker, processMeeting, relabelSpeaker, removeMeetingFiles, transcriptText } from './pipeline.js';
 import { meetingTools } from './tools.js';
 import { callWatcher } from './callwatch.js';
 import { startLiveMeeting } from './live.js';
@@ -37,9 +37,9 @@ export function insideDir(root: string, file: string) {
 }
 
 /** Listede transkript yok (büyük); ayrıntıda var */
-const light = (m: Meeting) => ({ ...m, audio_file: undefined, has_audio: Boolean(m.audio_file), transcript: undefined, cues: m.transcript.length });
+const light = (m: Meeting) => ({ ...m, audio_file: undefined, has_audio: Boolean(m.audio_file), transcript: undefined, cues: m.transcript.length, in_person: isInPerson(m.id) });
 /** Ayrıntı: yerel dosya yolu gizlenir, ses var mı bilgisi gider */
-const full = (m: Meeting) => ({ ...m, audio_file: undefined, has_audio: Boolean(m.audio_file) });
+const full = (m: Meeting) => ({ ...m, audio_file: undefined, has_audio: Boolean(m.audio_file), in_person: isInPerson(m.id) });
 
 function scanFolder(root: string, depth = 2, out: { path: string; name: string; size: number; mtime: string }[] = []) {
   if (!existsSync(root)) return out;
@@ -201,12 +201,27 @@ export function meetingsRouter() {
     res.json({ ...light(meeting), native, nativeError });
   }));
 
+  // Yüz yüze toplantı: yalnızca mikrofon (hoparlör yakalanmaz). Sesli duyuru arayüzde yapılır, dinleme duyurudan SONRA başlar.
+  r.post('/inperson', wrap(async (req, res) => {
+    if (nativeStatus()) return void res.status(409).json({ error: 'Zaten bir canlı dinleme sürüyor.' });
+    const names = Array.isArray(req.body?.attendees) ? (req.body.attendees as unknown[]).filter((x): x is string => typeof x === 'string') : [];
+    const { meeting } = await startLiveMeeting({
+      title: str(req.body?.title, 150),
+      project: str(req.body?.project, 120) || null,
+      attendees: names,
+      native: true,
+      inPerson: true,
+      requireNative: true,
+    });
+    res.json({ ...light(meeting), native: true, inPerson: true });
+  }));
+
   // Sunucudaki canlı dinleme durumu (arayüz yeniden yüklense de gerçeği gösterir)
   r.get('/live/status', wrap(async (_req, res) => {
     const st = nativeStatus();
     if (!st) return void res.json({ active: false });
     const m = await store.getMeeting(st.meetingId);
-    res.json({ active: true, native: true, meetingId: st.meetingId, title: m?.title ?? 'Canlı toplantı', startedAt: st.startedAt, micOk: st.micOk, sysOk: st.sysOk, devices: st.devices, error: st.error, stopping: st.stopping });
+    res.json({ active: true, native: true, meetingId: st.meetingId, title: m?.title ?? 'Canlı toplantı', startedAt: st.startedAt, inPerson: st.inPerson, micOk: st.micOk, sysOk: st.sysOk, devices: st.devices, error: st.error, stopping: st.stopping });
   }));
 
   r.post('/:id/chunk', wrap(async (req, res) => {

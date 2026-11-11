@@ -64,7 +64,7 @@ test('speechLevel: sessiz dosya ~0, konuşmalı dosya yüksek', () => {
   assert.ok(speechLevel(join(dir, 'l.raw')) > 0.1);
 });
 test('yardımcı satırları: çoklu mikrofon, biri açılmasa da sorun değil', () => {
-  const info: NativeInfo = { meetingId: 'x', startedAt: 0, micOk: false, sysOk: 0, devices: [], error: null, fromCall: false, stopping: false };
+  const info: NativeInfo = { meetingId: 'x', startedAt: 0, micOk: false, sysOk: 0, devices: [], error: null, fromCall: false, inPerson: false, stopping: false };
   parseHelperLine('OK|mic-0|16000 Hz', info);
   parseHelperLine('ERR|mic-1|Initialize 0x1', info);
   assert.equal(info.micOk, true);

@@ -240,6 +240,8 @@ export interface MeetingItem {
   proposals?: MeetingProposal[];
   /** Ses dosyası hâlâ duruyor mu (saklama süresi dolunca silinir) */
   has_audio?: boolean;
+  /** yüz yüze toplantı (yalnızca mikrofon kaydı) */
+  in_person?: boolean;
   /** Yalnızca ayrıntıda */
   transcript?: MeetingCue[];
   /** Yalnızca listede: satır sayısı */
@@ -305,8 +307,10 @@ export const api = {
   meetingFromFolder: (path: string, extra: { title?: string; event?: string; project?: string } = {}) => req<MeetingItem>('/meetings/from-folder', json('POST', { path, ...extra })),
   meetingLive: (extra: { title?: string; event?: string; project?: string; native?: boolean; fromCall?: boolean } = {}) =>
     req<MeetingItem & { native?: boolean; nativeError?: string | null }>('/meetings/live', json('POST', extra)),
+  meetingInPerson: (extra: { title?: string; project?: string; attendees?: string[] } = {}) =>
+    req<MeetingItem & { native?: boolean; inPerson?: boolean }>('/meetings/inperson', json('POST', extra)),
   liveStatus: () =>
-    req<{ active: boolean; native?: boolean; meetingId?: string; title?: string; startedAt?: number; micOk?: boolean; sysOk?: number; error?: string | null; stopping?: boolean }>('/meetings/live/status'),
+    req<{ active: boolean; native?: boolean; inPerson?: boolean; meetingId?: string; title?: string; startedAt?: number; micOk?: boolean; sysOk?: number; error?: string | null; stopping?: boolean }>('/meetings/live/status'),
   meetingFinish: (id: string) => req<MeetingItem>(`/meetings/${id}/finish`, json('POST', {})),
   meetingReprocess: (id: string) => req<{ ok: boolean }>(`/meetings/${id}/reprocess`, json('POST', {})),
   meetingCancel: (id: string) => req<{ ok: boolean }>(`/meetings/${id}/cancel`, json('POST', {})),

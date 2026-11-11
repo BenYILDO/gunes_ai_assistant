@@ -22,6 +22,8 @@ export interface NativeInfo {
   /** Kullanıcıya gösterilecek uyarı (ör. mikrofon açılamadı) */
   error: string | null;
   fromCall: boolean;
+  /** Yüz yüze toplantı: yalnızca mikrofon, hoparlör yakalanmaz */
+  inPerson: boolean;
   stopping: boolean;
 }
 
@@ -86,7 +88,7 @@ export function nativeStatus(): NativeInfo | null {
 }
 
 /** Yakalamayı başlatır; program hazır olana kadar bekler (en çok 25 sn). Başarısızsa hata fırlatır. */
-export async function startNative(meetingId: string, opts: { fromCall?: boolean } = {}): Promise<NativeInfo> {
+export async function startNative(meetingId: string, opts: { fromCall?: boolean; inPerson?: boolean } = {}): Promise<NativeInfo> {
   if (!nativeAvailable()) throw new Error('Yerel ses yakalama bu bilgisayarda kullanılamıyor.');
   if (caps.size) throw new Error('Zaten bir canlı dinleme sürüyor.');
   const t = meetingTools();
@@ -95,8 +97,9 @@ export async function startNative(meetingId: string, opts: { fromCall?: boolean 
   const script = join(ROOT, 'scripts', 'windows', 'ses-yakala.ps1');
   const args = ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, '-Out', dir];
   if (config.meetings.micDevice) args.push('-Mic', config.meetings.micDevice);
+  if (opts.inPerson) args.push('-NoSys');
   const child = spawn('powershell.exe', args, { windowsHide: true });
-  const info: NativeInfo = { meetingId, startedAt: Date.now(), micOk: false, sysOk: 0, devices: [], error: null, fromCall: Boolean(opts.fromCall), stopping: false };
+  const info: NativeInfo = { meetingId, startedAt: Date.now(), micOk: false, sysOk: 0, devices: [], error: null, fromCall: Boolean(opts.fromCall), inPerson: Boolean(opts.inPerson), stopping: false };
   let ready!: (v: 'ready' | 'closed') => void;
   const readyP = new Promise<'ready' | 'closed'>((r) => (ready = r));
   let buf = '';

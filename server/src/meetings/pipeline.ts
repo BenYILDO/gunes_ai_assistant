@@ -186,7 +186,7 @@ async function doProcess(id: string) {
     const attendees = await attendeesP;
     const profiles = candidateProfiles(await store.listVoiceProfiles(), attendees, config.userName).filter((p) => p.model === config.meetings.embeddingModel || !p.model);
     // Kendi sesiniz: yerel yakalama stereo (sol mikrofon / sağ karşı taraf); mikrofon baskınsa satır sizindir, işaretlemeniz gerekmez
-    const ch = /capture\.wav$/i.test(m0.audio_file) ? await classifyCuesByChannel(t.ffmpeg!, m0.audio_file, dir, raw).catch(() => null) : null;
+    const ch = /capture\.wav$/i.test(m0.audio_file) && !isInPerson(id) ? await classifyCuesByChannel(t.ffmpeg!, m0.audio_file, dir, raw).catch(() => null) : null;
     const userLabel = ch ? ownLabel(config.userName, attendees, profiles.map((p) => p.name)) : null;
     const isUser = (i: number) => !!ch && !!userLabel && ch[i]?.cls === 'user';
     const rec = recognize(vectors.filter((x) => !isUser(x.i)), profiles, config.meetings.voiceThreshold);
@@ -234,6 +234,14 @@ async function doProcess(id: string) {
 export function cancelMeeting(id: string) {
   activeAbort.get(id)?.abort();
 }
+
+/** Yüz yüze toplantı işareti: tek mikrofon kaydı; sol/sağ kanal (siz/karşı taraf) ayrımı YOKTUR. */
+const INPERSON_FLAG = 'yuzyuze.flag';
+export function markInPerson(id: string) {
+  mkdirSync(meetingDir(id), { recursive: true });
+  writeFileSync(join(meetingDir(id), INPERSON_FLAG), '1');
+}
+export const isInPerson = (id: string) => existsSync(join(meetingDir(id), INPERSON_FLAG));
 
 export function removeMeetingFiles(id: string) {
   rmSync(meetingDir(id), { recursive: true, force: true });

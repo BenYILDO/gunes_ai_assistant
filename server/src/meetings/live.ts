@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { getStore } from '../store/index.js';
 import type { Meeting } from '../store/types.js';
 import { nativeAvailable, startNative } from './capture.js';
-import { meetingDir, removeMeetingFiles } from './pipeline.js';
+import { markInPerson, meetingDir, removeMeetingFiles } from './pipeline.js';
 
 export interface LiveOptions {
   title?: string;
@@ -16,6 +16,9 @@ export interface LiveOptions {
   /** false = yalnızca tarayıcı yöntemi */
   native?: boolean;
   fromCall?: boolean;
+  /** Yüz yüze toplantı: yalnızca mikrofon; katılımcı adları ses tanımayı daraltır */
+  inPerson?: boolean;
+  attendees?: string[];
   /** true: yerel yakalama başlamazsa kaydı sil ve hata fırlat (tarayıcı yöntemine geçilemeyecek bağlamlar: popup) */
   requireNative?: boolean;
 }
@@ -23,7 +26,8 @@ export interface LiveOptions {
 export async function startLiveMeeting(o: LiveOptions): Promise<{ meeting: Meeting; native: boolean; nativeError: string | null }> {
   const store = getStore();
   const meeting = await store.createMeeting({
-    title: (o.title ?? '').trim().slice(0, 150) || 'Canlı toplantı',
+    title: (o.title ?? '').trim().slice(0, 150) || (o.inPerson ? 'Yüz yüze toplantı' : 'Canlı toplantı'),
+    attendees: (o.attendees ?? []).map((a) => a.trim().slice(0, 80)).filter(Boolean).slice(0, 30),
     source: 'live',
     status: 'recording',
     step: 'Dinleniyor',
@@ -33,11 +37,12 @@ export async function startLiveMeeting(o: LiveOptions): Promise<{ meeting: Meeti
   });
   const dir = meetingDir(meeting.id);
   mkdirSync(dir, { recursive: true });
+  if (o.inPerson) markInPerson(meeting.id);
   let native = false;
   let nativeError: string | null = null;
   if (nativeAvailable() && o.native !== false) {
     try {
-      await startNative(meeting.id, { fromCall: Boolean(o.fromCall) });
+      await startNative(meeting.id, { fromCall: Boolean(o.fromCall), inPerson: Boolean(o.inPerson) });
       native = true;
     } catch (e) {
       nativeError = (e as Error).message;

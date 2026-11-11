@@ -19,12 +19,14 @@ export interface LiveState {
   micOk: boolean;
   /** yerel yakalama mı (sunucuda) */
   native: boolean;
+  /** yüz yüze toplantı (yalnızca mikrofon) */
+  inPerson: boolean;
   chunks: number;
   failed: number;
   error: string | null;
 }
 
-const idle: LiveState = { active: false, stopping: false, meetingId: null, title: '', startedAt: null, micOk: false, native: false, chunks: 0, failed: 0, error: null };
+const idle: LiveState = { active: false, stopping: false, meetingId: null, title: '', startedAt: null, micOk: false, native: false, inPerson: false, chunks: 0, failed: 0, error: null };
 
 class LiveCapture {
   private s: LiveState = idle;
@@ -63,7 +65,7 @@ class LiveCapture {
       try {
         const st = await api.liveStatus();
         if (st.active && !this.s.active) {
-          this.set({ ...idle, active: true, native: true, meetingId: st.meetingId, title: st.title, startedAt: st.startedAt, micOk: st.micOk, error: st.error });
+          this.set({ ...idle, active: true, native: true, inPerson: Boolean(st.inPerson), meetingId: st.meetingId, title: st.title, startedAt: st.startedAt, micOk: st.micOk, error: st.error });
         } else if (st.active && this.s.native) {
           this.set({ micOk: st.micOk, error: st.error, stopping: st.stopping, title: st.title });
         } else if (!st.active && this.s.active && this.s.native && !this.s.stopping) {
@@ -101,6 +103,31 @@ class LiveCapture {
       throw new Error(`Yerel ses yakalama başlamadı: ${m.nativeError ?? 'bilinmeyen neden'}. .env'de GUNES_NATIVE_CAPTURE=off yaparsanız tarayıcı yöntemi (ekran paylaşımı) kullanılır.`);
     }
     return this.startBrowser(meta);
+  }
+
+  /** Yüz yüze toplantı: yalnızca mikrofon (sunucuda yerel yakalama); hoparlör alınmaz. */
+  async startInPerson(meta: { title?: string; project?: string; attendees?: string[] }, onDone?: (m: MeetingItem | null) => void) {
+    if (this.s.active) throw new Error('Zaten dinleniyor.');
+    this.onDone = onDone ?? null;
+    try {
+      const m = await api.meetingInPerson(meta);
+      this.set({ ...idle, active: true, native: true, inPerson: true, meetingId: m.id, title: m.title, startedAt: Date.now(), micOk: true });
+      return m;
+    } catch (e) {
+      this.onDone = null;
+      throw e;
+    }
+  }
+
+  /** Kaydı tamamen at (yerel dinleme): yakalama durur, toplantı silinir, işlenmez. */
+  async discard() {
+    const id = this.s.meetingId;
+    if (!this.s.active || !id) return;
+    this.set({ stopping: true });
+    await api.meetingCancel(id).catch(() => {});
+    await api.meetingDelete(id).catch(() => {});
+    this.onDone = null;
+    this.set({ ...idle });
   }
 
   // ---------------------------------------------------------------- tarayıcı yöntemi (yedek)

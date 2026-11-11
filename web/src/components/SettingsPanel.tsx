@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { Bell, Cpu, Info, LocateFixed, MapPin, Mic, MonitorPlay, PawPrint, RefreshCw, Search, Settings2, Volume2, X } from 'lucide-react';
+import { Bell, Cpu, Users, Info, LocateFixed, MapPin, Mic, MonitorPlay, PawPrint, RefreshCw, Search, Settings2, Volume2, X } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { api, type Pet, type Status, type Usage, type Weather } from '../lib/api';
 import { useNow } from '../lib/hooks';
@@ -7,6 +7,7 @@ import { effective, WindowRow } from './UsageMeter';
 import { relTime } from '../lib/time';
 import { listener, speechSupported, type ListenState } from '../lib/listener';
 import { setSetting, useSettings } from '../lib/settings';
+import { DEFAULT_GREETING, greetingText } from '../lib/inperson';
 import { getTtsVoice, setTtsVoice, setVoiceEnabled, speakAsync, voiceEnabled } from '../lib/speech';
 import { fmtTime } from '../lib/time';
 
@@ -230,6 +231,34 @@ export function SettingsPanel({ open, onClose, status, onVoiceTest, onVoiceDiag,
                       />
                     </Row>
                   </>
+                )}
+              </Section>
+
+              {/* ---------------- Yüz yüze toplantı */}
+              <Section icon={<Users size={14} />} title="Yüz yüze toplantı">
+                <Row label="Başlamadan önce sesli duyuru" hint="Kapalı: dinleme duyurusuz başlar. Açıkken Güneş önce odadakileri bilgilendirir, duyuru bitince dinlemeye başlar">
+                  <Toggle on={s.inPersonAnnounce} onChange={(v) => setSetting('inPersonAnnounce', v)} />
+                </Row>
+                {s.inPersonAnnounce && (
+                  <div className="space-y-1.5">
+                    <textarea
+                      aria-label="Duyuru metni"
+                      value={s.inPersonText || DEFAULT_GREETING}
+                      onChange={(e) => setSetting('inPersonText', e.target.value)}
+                      rows={4}
+                      maxLength={600}
+                      className="w-full resize-y rounded-lg border border-line bg-white/[0.05] px-2.5 py-1.5 text-xs leading-relaxed text-ink outline-none focus:border-[color:var(--accent)]/60"
+                    />
+                    <div className="flex flex-wrap items-center gap-3 text-[11px] text-ink-faint">
+                      <span>{'{ad}'} yerine adınız okunur.</span>
+                      <button className="underline-offset-2 hover:underline" onClick={() => void speakAsync(greetingText(s.inPersonText, status?.user.name ?? ''), { force: true, rate: 0.95 })}>
+                        Önce dinle
+                      </button>
+                      <button className="underline-offset-2 hover:underline" onClick={() => setSetting('inPersonText', '')}>
+                        Varsayılana dön
+                      </button>
+                    </div>
+                  </div>
                 )}
               </Section>
 

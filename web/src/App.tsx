@@ -668,6 +668,7 @@ export default function App() {
             {view === 'meetings' && (
               <motion.div key="meetings" className="h-full" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.15 } }}>
                 <MeetingsView
+                  userName={user?.name ?? ''}
                   projects={wiki.data ?? []}
                   onOpenWiki={(slug) => {
                     setView('wiki');

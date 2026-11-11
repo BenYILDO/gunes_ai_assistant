@@ -8,6 +8,7 @@ import { liveCapture, liveSupported, useLive } from '../lib/liveCapture';
 import { relTime } from '../lib/time';
 import { Button, Chip, Empty, Panel, PanelTitle } from './ui';
 import { useToast } from './Toasts';
+import { InPersonLauncher, InPersonLive } from './InPersonPanel';
 
 const STATUS: Record<MeetingStatus, { label: string; cls: string }> = {
   recording: { label: 'Dinleniyor', cls: 'text-danger' },
@@ -54,7 +55,7 @@ function Select({ value, onChange, children, className = '' }: { value: string; 
 }
 
 /** Toplantılar: canlı dinle, kayıt ekle, konuşmacıları adlandır, özetle ve wiki'ye bağla. */
-export function MeetingsView({ projects, onOpenWiki, onAsk, onFocusMeeting }: { projects: WikiPageMeta[]; onOpenWiki: (slug: string) => void; onAsk?: (text: string, ref: ChatRef) => void; onFocusMeeting?: (ref: ChatRef | null) => void }) {
+export function MeetingsView({ projects, userName = '', onOpenWiki, onAsk, onFocusMeeting }: { projects: WikiPageMeta[]; userName?: string; onOpenWiki: (slug: string) => void; onAsk?: (text: string, ref: ChatRef) => void; onFocusMeeting?: (ref: ChatRef | null) => void }) {
   const toast = useToast();
   const live = useLive();
   const callNow = useCall(live.active).call;
@@ -66,6 +67,7 @@ export function MeetingsView({ projects, onOpenWiki, onAsk, onFocusMeeting }: { 
   const [project, setProject] = useState('');
   const [openId, setOpenId] = useState<string | null>(null);
   const [liveTitle, setLiveTitle] = useState('');
+  const [mode, setMode] = useState<'online' | 'inperson'>('online');
   const [upTitle, setUpTitle] = useState('');
   const [upEvent, setUpEvent] = useState('');
   const [upPct, setUpPct] = useState<number | null>(null);
@@ -148,7 +150,18 @@ export function MeetingsView({ projects, onOpenWiki, onAsk, onFocusMeeting }: { 
         {/* ---------- Canlı dinle */}
         <Panel className="p-4">
           <PanelTitle icon={<Radio size={14} />}>Toplantıyı benimle dinle</PanelTitle>
-          {live.active ? (
+          {!live.active && (
+            <div role="tablist" aria-label="Toplantı türü" className="mb-3 inline-flex rounded-lg border border-line bg-black/20 p-0.5 text-xs">
+              {([['online', 'Çevrimiçi / arama'], ['inperson', 'Yüz yüze']] as const).map(([k, label]) => (
+                <button key={k} role="tab" aria-selected={mode === k} onClick={() => setMode(k)} className={`rounded-md px-3 py-1 ${mode === k ? 'bg-[color:var(--accent)]/20 text-ink' : 'text-ink-faint hover:text-ink'}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+          {live.active && live.inPerson ? (
+            <InPersonLive />
+          ) : live.active ? (
             <div className="space-y-3">
               <div className="flex items-center gap-3 rounded-xl border border-[color:var(--danger)]/40 bg-[color:var(--danger)]/10 px-3 py-2.5">
                 <span className="relative flex h-2.5 w-2.5">
@@ -173,6 +186,16 @@ export function MeetingsView({ projects, onOpenWiki, onAsk, onFocusMeeting }: { 
               {live.error && <div className="text-xs text-danger">{live.error}</div>}
               <p className="text-[11px] leading-relaxed text-ink-faint">{live.native ? 'Arama bitince kendiliğinden biter; isterseniz "Bitir ve işle"ye basın.' : 'Toplantı bitince "Bitir ve işle"ye basın.'} Güneş yazıya çevirip sesleri ayırır; hesaplama bu bilgisayarda yapılır, ses dışarı çıkmaz.</p>
             </div>
+          ) : mode === 'inperson' ? (
+            <InPersonLauncher
+              projects={projects}
+              userName={userName}
+              nativeOk={tools.data?.nativeCapture !== false}
+              onDone={(m) => {
+                void list.refresh();
+                if (m) setOpenId(m.id);
+              }}
+            />
           ) : (
             <div className="space-y-3">
               {!liveSupported() && <div className="text-xs text-danger">Bu tarayıcı sistem sesi yakalamayı desteklemiyor.</div>}
@@ -287,7 +310,7 @@ export function MeetingsView({ projects, onOpenWiki, onAsk, onFocusMeeting }: { 
                   <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-ink-faint">
                     <span>{relTime(m.started_at ?? m.created_at)}</span>
                     {m.duration_sec ? <span>· {dur(m.duration_sec)}</span> : null}
-                    <Chip>{m.source === 'live' ? 'canlı' : m.source === 'folder' ? 'klasör' : 'yüklendi'}</Chip>
+                    <Chip>{m.in_person ? 'yüz yüze' : m.source === 'live' ? 'canlı' : m.source === 'folder' ? 'klasör' : 'yüklendi'}</Chip>
                     {m.speakers.filter((s) => s.kind === 'unknown').length > 0 && (
                       <Chip className="!text-warn">
                         {m.speakers.filter((s) => s.kind === 'unknown').length} ses adlandırılmayı bekliyor

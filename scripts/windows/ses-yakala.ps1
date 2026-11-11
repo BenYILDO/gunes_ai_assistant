@@ -1,10 +1,11 @@
 # Gunes: arama sirasinda sesi yerel olarak yakalar (ekran paylasimi/izin penceresi YOK).
 #   - mic.raw     : mikrofonunuz (varsayilan "iletisim" mikrofonu; -Mic ile ad parcasi verilirse o cihaz)
 #   - sys-N.raw   : hoparlor/kulaklik CIKISI (WASAPI loopback), her aktif cikis cihazi icin ayri dosya
+# -NoSys: yuz yuze toplanti; yalnizca mikrofon (hoparlor/loopback yakalanmaz).
 # Cikti: 16 kHz, 16 bit, tek kanal HAM PCM (basliksiz); sessiz anlar sifirla doldurulur, boylece zaman hizasi korunur.
 # Durdurma: stdin'e "q" yazin ya da stdin'i kapatin (Gunes sunucusu kapanirsa program kendiliginden biter).
 # Yalnizca standart Windows bilesenlerini kullanir; hicbir sey indirmez, hicbir yere gondermez.
-param([Parameter(Mandatory)][string]$Out, [string]$Mic = '', [int]$MaxSeconds = 14400)
+param([Parameter(Mandatory)][string]$Out, [string]$Mic = '', [int]$MaxSeconds = 14400, [switch]$NoSys)
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $src = @'
@@ -186,7 +187,7 @@ public static class Ses {
     finally { if (fs != null) { fs.Flush(); fs.Dispose(); } }
   }
 
-  public static int Run(string outDir, string micMatch, int maxSeconds) {
+  public static int Run(string outDir, string micMatch, int maxSeconds, bool noSys) {
     Directory.CreateDirectory(outDir);
     var en = (IMMDeviceEnumerator)new MMDeviceEnumeratorCom();
     var clock = Stopwatch.StartNew();
@@ -221,12 +222,12 @@ public static class Ses {
 
     // Hoparlor/kulaklik cikisi: HER aktif cikis cihazi (Teams hangisine caliyorsa o yakalanir)
     int idx = 0;
-    foreach (var d in Active(en, 0)) {
+    if (!noSys) foreach (var d in Active(en, 0)) {
       int k = idx++; var did = d.Id;
       Log("DEV|cikis|" + d.Name);
       var t = new Thread(() => Worker("sys-" + k, did, true, Path.Combine(outDir, "sys-" + k + ".raw"), clock)); t.IsBackground = true; threads.Add(t);
     }
-    if (idx == 0) Log("ERR|sys|aktif cikis cihazi yok");
+    if (idx == 0 && !noSys) Log("ERR|sys|aktif cikis cihazi yok");
     foreach (var t in threads) t.Start();
 
     // stdin: "q" ya da kapanma = dur
@@ -242,4 +243,4 @@ public static class Ses {
 }
 '@
 Add-Type -TypeDefinition $src -Language CSharp
-exit ([Ses]::Run($Out, $Mic, $MaxSeconds))
+exit ([Ses]::Run($Out, $Mic, $MaxSeconds, [bool]$NoSys))

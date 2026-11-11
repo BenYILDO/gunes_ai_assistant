@@ -18,10 +18,14 @@ export interface Settings {
   callQuiet: boolean;
   /** Kedinin boyutu: 1 = en büyük (üst sınır), 0,5 = yarısı */
   petScale: number;
+  /** Yüz yüze toplantıda dinlemeden önce Güneş sesli duyuru yapsın (varsayılan KAPALI; Ayarlar → Yüz yüze toplantı) */
+  inPersonAnnounce: boolean;
+  /** Duyuru metni ({ad} = kullanıcı adı); boşsa varsayılan */
+  inPersonText: string;
 }
 
 const KEY = 'gunes.settings';
-const DEFAULTS: Settings = { speechRate: 1.12, autoVoice: true, introMode: 'always', autoLocation: true, quietOn: false, quietFrom: '12:00', quietTo: '13:00', callQuiet: true, petScale: 0.75 };
+const DEFAULTS: Settings = { speechRate: 1.12, autoVoice: true, introMode: 'always', autoLocation: true, quietOn: false, quietFrom: '12:00', quietTo: '13:00', callQuiet: true, petScale: 0.75, inPersonAnnounce: false, inPersonText: '' };
 
 export function getSettings(): Settings {
   try {
